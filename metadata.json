@@ -1,0 +1,5 @@
+{
+  "name": "Smart Attendance System",
+  "description": "A real-time attendance system with face recognition, admin dashboard, and student tracking.",
+  "requestFramePermissions": ["camera"]
+}
