@@ -119,9 +119,12 @@ export default function StudentRegistration({ onRegisterSuccess }: StudentRegist
           setTimeout(onRegisterSuccess, 1500);
         }
       } else {
-        throw new Error('Failed to save');
+        const errorText = await res.text();
+        console.error("Server returned error:", res.status, errorText);
+        throw new Error(`Failed to save: ${res.status} ${errorText}`);
       }
     } catch (err) {
+      console.error("Registration error:", err);
       setStatus({ type: 'error', message: 'Failed to register student' });
     }
   };

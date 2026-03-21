@@ -30,6 +30,11 @@ async function startServer() {
 
   app.use(express.json({ limit: '50mb' }));
 
+  app.use((req, res, next) => {
+    console.log(`[${req.method}] ${req.url}`);
+    next();
+  });
+
   // API Routes
   app.get('/api/students', (req, res) => {
     try {
@@ -41,6 +46,7 @@ async function startServer() {
   });
 
   app.post('/api/students', (req, res) => {
+    console.log("Received POST /api/students", req.body);
     try {
       const students = JSON.parse(fs.readFileSync(STUDENTS_FILE, 'utf-8'));
       const newStudent = req.body;
@@ -48,6 +54,7 @@ async function startServer() {
       fs.writeFileSync(STUDENTS_FILE, JSON.stringify(students, null, 2));
       res.json(newStudent);
     } catch (error) {
+      console.error("Error saving student:", error);
       res.status(500).json({ error: 'Failed to save student' });
     }
   });
