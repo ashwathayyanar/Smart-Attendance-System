@@ -91,7 +91,7 @@ export default function AttendanceMode() {
       setFaceCount(detections.length);
       const resizedDetections = faceapi.resizeResults(detections, displaySize);
       
-      const ctx = canvas.getContext('2d');
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
       ctx?.clearRect(0, 0, canvas.width, canvas.height);
 
       resizedDetections.forEach((detection) => {

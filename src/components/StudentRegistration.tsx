@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Camera, User, Phone, ShieldCheck, RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Camera, User, Phone, RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react';
 import { FaceService } from '../services/faceService';
 import { Student } from '../types';
 
@@ -46,6 +46,7 @@ export default function StudentRegistration({ onRegisterSuccess }: StudentRegist
       const s = await navigator.mediaDevices.getUserMedia({ video: true });
       setStream(s);
       setIsCapturing(true);
+      setStatus({ type: 'idle', message: '' });
     } catch (err) {
       setStatus({ type: 'error', message: 'Could not access camera' });
     }
@@ -62,44 +63,55 @@ export default function StudentRegistration({ onRegisterSuccess }: StudentRegist
   const captureFace = async () => {
     if (!videoRef.current || !canvasRef.current) return;
 
-    setStatus({ type: 'loading', message: 'Detecting face...' });
+    setStatus({ type: 'loading', message: 'Analyzing face...' });
     
-    const canvas = canvasRef.current;
-    const video = videoRef.current;
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext('2d');
-    ctx?.drawImage(video, 0, 0);
+    try {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      
+      // Capture the image for preview
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      ctx?.drawImage(video, 0, 0);
 
-    const descriptor = await FaceService.getFaceDescriptor(video);
-    
-    if (descriptor) {
-      setFaceDescriptor(Array.from(descriptor));
-      setCapturedImage(canvas.toDataURL('image/jpeg'));
-      setStatus({ type: 'success', message: 'Face captured successfully!' });
-      stopCamera();
-    } else {
-      setStatus({ type: 'error', message: 'No face detected. Please try again.' });
+      // Get the 128-number descriptor
+      const descriptor = await FaceService.getFaceDescriptor(video);
+      
+      if (descriptor && descriptor.length === 128) {
+        // Convert Float32Array to standard numeric Array
+        setFaceDescriptor(Array.from(descriptor));
+        setCapturedImage(canvas.toDataURL('image/jpeg'));
+        setStatus({ type: 'success', message: 'Face data captured (128-bit)!' });
+        stopCamera();
+      } else {
+        setStatus({ type: 'error', message: 'Face not detected clearly. Please look at the camera.' });
+      }
+    } catch (error) {
+      console.error("Capture error:", error);
+      setStatus({ type: 'error', message: 'Error analyzing face.' });
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!faceDescriptor) {
-      setStatus({ type: 'error', message: 'Please capture student face first' });
+      setStatus({ type: 'error', message: 'Please capture face first' });
       return;
     }
 
-    setStatus({ type: 'loading', message: 'Saving student data...' });
+    setStatus({ type: 'loading', message: 'Syncing with Singapore Database...' });
 
-    const student: Student = {
-      ...formData,
-      id: formData.id.trim(),
-      name: formData.name.trim(),
+    // Prepare data with the "Catch-All" labels for the backend
+    const studentPayload = {
+      studentId: formData.id.trim(),
+      fullName: formData.name.trim(),
       className: formData.className.trim(),
       section: formData.section.trim(),
-      parentMobile: '', // Add default or input if required
-      faceDescriptor,
+      mobile: formData.mobile.trim(),
+      // We send the descriptor as a JSON string to ensure PG handles it correctly
+      faceData: JSON.stringify(faceDescriptor),
+      faceDescriptor: faceDescriptor,
       createdAt: new Date().toISOString()
     };
 
@@ -107,7 +119,7 @@ export default function StudentRegistration({ onRegisterSuccess }: StudentRegist
       const res = await fetch('/api/students', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(student)
+        body: JSON.stringify(studentPayload)
       });
 
       if (res.ok) {
@@ -120,12 +132,11 @@ export default function StudentRegistration({ onRegisterSuccess }: StudentRegist
         }
       } else {
         const errorText = await res.text();
-        console.error("Server returned error:", res.status, errorText);
-        throw new Error(`Failed to save: ${res.status} ${errorText}`);
+        throw new Error(errorText || 'Server rejected registration');
       }
     } catch (err) {
       console.error("Registration error:", err);
-      setStatus({ type: 'error', message: 'Failed to register student' });
+      setStatus({ type: 'error', message: 'Registration failed. Check internet connection.' });
     }
   };
 
@@ -148,7 +159,7 @@ export default function StudentRegistration({ onRegisterSuccess }: StudentRegist
                   value={formData.id}
                   onChange={(e) => setFormData({ ...formData, id: e.target.value })}
                   className="w-full px-4 py-3 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
-                  placeholder="Enter Student ID"
+                  placeholder="Enter ID"
                   required
                 />
               </div>
@@ -159,7 +170,7 @@ export default function StudentRegistration({ onRegisterSuccess }: StudentRegist
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   className="w-full px-4 py-3 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
-                  placeholder="Enter Full Name"
+                  placeholder="Enter Name"
                   required
                 />
               </div>
@@ -173,7 +184,7 @@ export default function StudentRegistration({ onRegisterSuccess }: StudentRegist
                   value={formData.className}
                   onChange={(e) => setFormData({ ...formData, className: e.target.value })}
                   className="w-full px-4 py-3 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
-                  placeholder="Enter Class"
+                  placeholder="Class"
                   required
                 />
               </div>
@@ -184,7 +195,7 @@ export default function StudentRegistration({ onRegisterSuccess }: StudentRegist
                   value={formData.section}
                   onChange={(e) => setFormData({ ...formData, section: e.target.value })}
                   className="w-full px-4 py-3 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
-                  placeholder="Enter Section"
+                  placeholder="Sec"
                   required
                 />
               </div>
@@ -199,7 +210,7 @@ export default function StudentRegistration({ onRegisterSuccess }: StudentRegist
                   value={formData.mobile}
                   onChange={(e) => setFormData({ ...formData, mobile: e.target.value })}
                   className="w-full pl-10 pr-4 py-3 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
-                  placeholder="Enter Mobile Number"
+                  placeholder="Mobile Number"
                   required
                 />
               </div>
@@ -219,7 +230,7 @@ export default function StudentRegistration({ onRegisterSuccess }: StudentRegist
             <button
               type="submit"
               disabled={!faceDescriptor || status.type === 'loading'}
-              className="w-full bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-4 rounded-2xl transition-all shadow-lg shadow-emerald-500/20 active:scale-[0.98]"
+              className="w-full bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-4 rounded-2xl transition-all shadow-lg active:scale-[0.98]"
             >
               Register Student
             </button>
@@ -261,6 +272,7 @@ export default function StudentRegistration({ onRegisterSuccess }: StudentRegist
           <div className="grid grid-cols-2 gap-4 w-full mt-6">
             {!isCapturing ? (
               <button
+                type="button"
                 onClick={startCamera}
                 className="col-span-2 flex items-center justify-center gap-2 py-3 rounded-xl bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 font-bold transition-all"
               >
@@ -270,14 +282,16 @@ export default function StudentRegistration({ onRegisterSuccess }: StudentRegist
             ) : (
               <>
                 <button
+                  type="button"
                   onClick={stopCamera}
                   className="py-3 rounded-xl bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 font-bold transition-all"
                 >
                   Cancel
                 </button>
                 <button
+                  type="button"
                   onClick={captureFace}
-                  className="py-3 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold transition-all shadow-lg shadow-emerald-500/20"
+                  className="py-3 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold transition-all shadow-lg"
                 >
                   Capture Face
                 </button>
