@@ -119,54 +119,68 @@ export default function AttendanceMode() {
   };
 
   const handleCaptureAttendance = async () => {
-    if (!videoRef.current || !faceMatcherRef.current) return;
+    if (!videoRef.current || !faceMatcherRef.current) {
+      setStatus({ type: 'error', message: 'System not ready. Please refresh.' });
+      return;
+    }
     
-    setStatus({ type: 'loading', message: 'Capturing attendance...' });
+    setStatus({ type: 'loading', message: 'Analyzing face...' });
     try {
+      // 1. Detect faces from the current video frame
       const detections = await FaceService.detectFaces(videoRef.current);
       
-      if (detections.length === 0) {
-        setStatus({ type: 'error', message: 'No faces detected.' });
+      if (!detections || detections.length === 0) {
+        setStatus({ type: 'error', message: 'No faces detected. Move closer.' });
         setTimeout(() => setStatus({ type: 'idle', message: '' }), 3000);
         return;
       }
 
       let markedCount = 0;
+      
+      // 2. Loop through detected faces safely
       for (const detection of detections) {
+        // Find the best match from our database
         const result = faceMatcherRef.current.findBestMatch(detection.descriptor);
         
-        // Match found and not already marked in this session
-        if (result.label !== 'unknown' && result.distance < 0.6 && !recognizedStudents.has(result.label)) {
+        // 0.6 is the "Strictness" level. Lower = Harder to match.
+        if (result.label !== 'unknown' && result.distance < 0.6) {
           const [id] = result.label.split(':::');
-          // Find student using either label
-          const student = students.find(s => String(s.id) === String(id) || String(s.studentId) === String(id));
           
-          if (student) {
-            await markAttendance(student, detection.expressions, result.label);
-            markedCount++;
+          // Double check the student exists in our local list
+          const student = students.find(s => 
+            String(s.id) === String(id) || 
+            String(s.studentId) === String(id)
+          );
+          
+          if (student && !recognizedStudents.has(result.label)) {
+            const success = await markAttendance(student, detection.expressions, result.label);
+            if (success) markedCount++;
           }
         }
       }
       
+      // 3. Update status based on results
       if (markedCount > 0) {
-        setStatus({ type: 'success', message: `Successfully marked ${markedCount} students present.` });
+        setStatus({ type: 'success', message: `Attendance marked for ${markedCount} student(s)!` });
       } else {
-        setStatus({ type: 'error', message: 'No registered students recognized.' });
+        setStatus({ type: 'error', message: 'Student not recognized. Please re-register.' });
       }
+      
       setTimeout(() => setStatus({ type: 'idle', message: '' }), 3000);
     } catch (err) {
-      console.error('Capture failed:', err);
-      setStatus({ type: 'error', message: 'Failed to capture attendance.' });
+      console.error('CRITICAL CAPTURE ERROR:', err);
+      setStatus({ type: 'error', message: 'Recognition Error. Check browser console.' });
     }
   };
 
   const markAttendance = async (student: Student, expressions: faceapi.FaceExpressions, label: string) => {
+    // Determine the dominant emotion
     const emotion = Object.entries(expressions).reduce((a, b) => a[1] > b[1] ? a : b)[0];
     const now = new Date();
     
     const record = {
-      studentId: String(student.id || student.studentId),
-      name: student.name || student.fullName,
+      studentId: String(student.id || (student as any).studentId),
+      name: student.name || (student as any).fullName,
       date: now.toISOString().split('T')[0],
       time: now.toLocaleTimeString(),
       status: 'PRESENT',
@@ -185,12 +199,16 @@ export default function AttendanceMode() {
         setRecognizedStudents(prev => new Set(prev).add(label));
         const utterance = new SpeechSynthesisUtterance(`Attendance marked for ${record.name}`);
         window.speechSynthesis.speak(utterance);
+        
+        return true; // <--- ADDED: Tells the system this was successful
       }
+      
+      return false; // <--- ADDED: Tells the system the server rejected it
     } catch (err) {
       console.error('Failed to mark attendance', err);
+      return false; // <--- ADDED: Tells the system a network error happened
     }
   };
-
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
