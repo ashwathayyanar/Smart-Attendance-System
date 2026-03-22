@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { History, Search, Filter, Download, Calendar } from 'lucide-react';
+import { History, Search, Filter, Download, Calendar, Trash2 } from 'lucide-react'; // Added Trash2
 import { AttendanceRecord } from '../types';
 import { format } from 'date-fns';
 import * as XLSX from 'xlsx';
@@ -9,20 +9,37 @@ export default function AttendanceLogs() {
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
 
+  const fetchLogs = async () => {
+    try {
+      const res = await fetch('/api/attendance');
+      const data = await res.json();
+      setLogs(data);
+    } catch (error) {
+      console.error('Failed to fetch logs', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchLogs = async () => {
-      try {
-        const res = await fetch('/api/attendance');
-        const data = await res.json();
-        setLogs(data);
-      } catch (error) {
-        console.error('Failed to fetch logs', error);
-      } finally {
-        setLoading(false);
-      }
-    };
     fetchLogs();
   }, []);
+
+  // --- NEW FEATURE CODE START ---
+  const handleClearLogs = async () => {
+    if (window.confirm('Are you sure you want to clear ALL attendance logs for the new day? This cannot be undone.')) {
+      try {
+        const res = await fetch('/api/attendance', { method: 'DELETE' });
+        if (res.ok) {
+          setLogs([]);
+          alert('Attendance logs cleared successfully.');
+        }
+      } catch (error) {
+        alert('Failed to clear logs.');
+      }
+    }
+  };
+  // --- NEW FEATURE CODE END ---
 
   const filteredLogs = logs.filter(log => 
     log.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -52,6 +69,15 @@ export default function AttendanceLogs() {
           />
         </div>
         <div className="flex gap-3 w-full md:w-auto">
+          {/* NEW CLEAR LOGS BUTTON */}
+          <button 
+            onClick={handleClearLogs}
+            className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-3 bg-rose-500/10 text-rose-500 rounded-2xl text-sm font-bold hover:bg-rose-500 hover:text-white transition-all"
+          >
+            <Trash2 size={18} />
+            Clear Logs
+          </button>
+          
           <button className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-3 bg-zinc-100 dark:bg-zinc-800 rounded-2xl text-sm font-bold hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-all">
             <Filter size={18} />
             Filter
@@ -104,7 +130,7 @@ export default function AttendanceLogs() {
                   <td className="px-8 py-5">
                     <div className="flex items-center gap-2 text-sm">
                       <Calendar size={14} className="opacity-30" />
-                      {format(new Date(log.date), 'MMM dd, yyyy')}
+                      {log.date}
                     </div>
                   </td>
                   <td className="px-8 py-5 text-sm opacity-70">

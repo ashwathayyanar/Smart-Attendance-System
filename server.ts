@@ -160,6 +160,17 @@ async function startServer() {
     }
   });
 
+  // DELETE all attendance records (Wipe for next day)
+app.delete('/api/attendance', async (req, res) => {
+  try {
+    await prisma.attendance.deleteMany();
+    res.json({ message: 'Attendance logs cleared successfully' });
+  } catch (error) {
+    console.error("Error clearing attendance:", error);
+    res.status(500).json({ error: 'Failed to clear attendance' });
+  }
+});
+
   // --- 3. FRONTEND SERVING / VITE ---
   if (process.env.NODE_ENV !== 'production') {
     const vitePkg = 'vite';
