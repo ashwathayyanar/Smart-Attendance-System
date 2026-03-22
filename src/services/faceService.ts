@@ -45,33 +45,53 @@ export class FaceService {
   }
 
   /**
-   * FIX: Added "Catch-All" label logic to match the new backend/database labels
+   * FIXED: Uses .flatMap to skip invalid descriptors and enforces the 128-bit length requirement
+   * This prevents the "euclideanDistance: arr1.length !== arr2.length" error.
    */
   static createFaceMatcher(students: Student[]) {
-    const labeledDescriptors = students.map(student => {
-      // 1. Safe extraction of the ID and Name (Checks all possible labels)
+    const labeledDescriptors = students.flatMap(student => {
+      // 1. Safe extraction of labels
       const id = student.id || student.studentId || "UnknownID";
       const name = student.name || student.fullName || "Student";
       
-      // 2. Safe conversion of the Face Descriptor
-      // Database might send a string, an array, or a Float32Array. We force it to Float32Array.
-      let descriptorArray: Float32Array;
-      
-      try {
-        const rawData = typeof student.faceData === 'string' ? JSON.parse(student.faceData) : (student.faceData || student.faceDescriptor);
-        descriptorArray = new Float32Array(rawData);
-      } catch (e) {
-        console.error(`Face data error for student ${id}:`, e);
-        // Provide an empty array so the matcher doesn't crash the whole app
-        descriptorArray = new Float32Array(128); 
+      let rawData = student.faceData || student.faceDescriptor;
+
+      // 2. Parse if the database sent a string
+      if (typeof rawData === 'string') {
+        try {
+          rawData = JSON.parse(rawData);
+        } catch (e) {
+          console.warn(`Skipping ${name}: Data is not a valid JSON string.`);
+          return []; // Skip this student
+        }
       }
 
-      const label = `${id}:::${name}`;
-      return new faceapi.LabeledFaceDescriptors(label, [descriptorArray]);
+      // 3. CRITICAL: Validate descriptor length
+      // Face-api.js requires exactly 128 numbers. If we send anything else, it crashes.
+      if (!Array.isArray(rawData) || rawData.length !== 128) {
+        console.warn(`Skipping ${name}: Descriptor length is ${rawData?.length}, expected 128.`);
+        return []; // Skip this student
+      }
+
+      // 4. Success: Convert to Float32Array and return as a single-item array for .flatMap
+      try {
+        const descriptorArray = new Float32Array(rawData);
+        const label = `${id}:::${name}`;
+        return [new faceapi.LabeledFaceDescriptors(label, [descriptorArray])];
+      } catch (e) {
+        console.error(`Error processing descriptor for ${name}:`, e);
+        return []; // Skip this student
+      }
     });
 
-    // 0.6 distance means the AI must be 40% sure it's you. 
-    // If it's still failing, you can try 0.5 for more strictness or 0.7 for more leniency.
+    // Fallback if NO students are valid (prevents empty matcher crash)
+    if (labeledDescriptors.length === 0) {
+      console.error("No valid student descriptors found in database.");
+      return new faceapi.FaceMatcher([
+        new faceapi.LabeledFaceDescriptors("none", [new Float32Array(128).fill(0)])
+      ]);
+    }
+
     return new faceapi.FaceMatcher(labeledDescriptors, 0.6);
   }
 }
