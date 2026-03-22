@@ -3,9 +3,11 @@ import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { PrismaClient } from '@prisma/client';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const prisma = new PrismaClient();
 
 const DATA_DIR = path.join(__dirname, 'data');
 const STUDENTS_FILE = path.join(DATA_DIR, 'students.json');
@@ -142,6 +144,30 @@ async function startServer() {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
+
+  app.post('/api/students', async (req, res) => {
+  console.log("Received POST /api/students");
+  try {
+    const { studentId, fullName, class: className, section, mobile, faceData } = req.body;
+
+    // Save to the real database using Prisma
+    const newStudent = await prisma.student.create({
+      data: {
+        studentId,
+        fullName,
+        className,
+        section,
+        mobile,
+        faceData // Make sure you compress this on the frontend!
+      }
+    });
+
+    res.json(newStudent);
+  } catch (error) {
+    console.error("Error saving student to database:", error);
+    res.status(500).json({ error: 'Failed to save student' });
+  }
+});
 }
 
 startServer();
