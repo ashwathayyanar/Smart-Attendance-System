@@ -31,25 +31,41 @@ async function startServer() {
   // --- API Routes using Prisma Database ---
 
   // GET all students
- // GET all students
-  app.get('/api/students', async (req, res) => {
+ app.get('/api/students', async (req, res) => {
     try {
       const students = await prisma.student.findMany();
       
-      // Translate database labels back to what the frontend might expect!
-      const frontendReadyStudents = students.map(student => ({
-        ...student,
-        id: student.studentId,       // The frontend likely looks for 'id'
-        name: student.fullName,      // The frontend likely looks for 'name'
-        class: student.className     // The frontend likely looks for 'class'
-      }));
+      const frontendReadyStudents = students.map(student => {
+        // We convert the faceData string back into an object/array if it was stored that way
+        let parsedFaceData = student.faceData;
+        try {
+          parsedFaceData = JSON.parse(student.faceData);
+        } catch (e) {
+          // If it's not JSON, keep it as a string
+        }
+
+        return {
+          ...student,
+          id: student.studentId,
+          studentId: student.studentId,
+          name: student.fullName,
+          fullName: student.fullName,
+          // We provide the face data under every possible name the AI model might look for
+          faceData: parsedFaceData,
+          faceDescriptor: parsedFaceData,
+          descriptors: parsedFaceData ? [parsedFaceData] : [],
+          class: student.className,
+          className: student.className
+        };
+      });
 
       res.json(frontendReadyStudents);
     } catch (error) {
-      console.error("Error reading students from database:", error);
+      console.error("Error reading students:", error);
       res.status(500).json({ error: 'Failed to read students' });
     }
   });
+  
 
   // POST a new student
   // POST a new student
