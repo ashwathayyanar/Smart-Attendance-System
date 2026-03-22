@@ -1,14 +1,14 @@
 import express from 'express';
-import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { PrismaClient } from '@prisma/client';
+
+// NOTICE: We completely removed the Vite import from the top of the file!
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Initialize Prisma
-// It will automatically connect using the DATABASE_URL in Vercel's Environment Variables
 const prisma = new PrismaClient();
 
 async function startServer() {
@@ -40,7 +40,6 @@ async function startServer() {
   app.post('/api/students', async (req, res) => {
     console.log("Received POST /api/students");
     try {
-      // We map 'class' from req.body to 'className' because 'class' is a reserved word
       const { studentId, fullName, class: className, section, mobile, faceData } = req.body;
 
       // Save to the real database using Prisma
@@ -79,7 +78,6 @@ async function startServer() {
     try {
       const { studentId, name, date, time, status } = req.body;
       
-      // Prevent duplicates: Check if attendance already exists for this student today
       const existingRecord = await prisma.attendance.findFirst({
         where: {
           studentId: studentId,
@@ -88,13 +86,11 @@ async function startServer() {
       });
       
       if (!existingRecord) {
-        // Create new record in database
         const newRecord = await prisma.attendance.create({
           data: { studentId, name, date, time, status }
         });
         res.json(newRecord);
       } else {
-        // Return existing record if already marked present today
         res.json(existingRecord);
       }
     } catch (error) {
@@ -105,11 +101,14 @@ async function startServer() {
 
   // --- Vite / Frontend Rendering ---
   if (process.env.NODE_ENV !== 'production') {
-    const vite = await createViteServer({
+    // We use a "Dynamic Import" trick here so Vercel ignores this entirely
+    const vitePkg = 'vite';
+    const vite = await import(vitePkg);
+    const viteServer = await vite.createServer({
       server: { middlewareMode: true },
       appType: 'spa',
     });
-    app.use(vite.middlewares);
+    app.use(viteServer.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
