@@ -1,24 +1,29 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql" // change this if using mongodb or mysql
-  url      = env("DATABASE_URL")
+  provider = "postgresql" 
+  // Notice we removed the url line here for Prisma 7 compatibility!
 }
 
 model Student {
   id        Int      @id @default(autoincrement())
   studentId String   @unique
   fullName  String
-  className String   // 'class' is a reserved word in JS, safer to use className
+  className String   
   section   String
   mobile    String
-  faceData  String   @db.Text // To store the face embedding/Base64 image
+  faceData  String   @db.Text 
+  createdAt DateTime @default(now())
+}
+
+model Attendance {
+  id        Int      @id @default(autoincrement())
+  studentId String
+  name      String
+  date      String
+  time      String
+  status    String   @default("Present")
   createdAt DateTime @default(now())
 }

@@ -1,38 +1,21 @@
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
-import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { PrismaClient } from '@prisma/client';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Initialize Prisma
+// It will automatically connect using the DATABASE_URL in Vercel's Environment Variables
 const prisma = new PrismaClient();
-
-const DATA_DIR = path.join(__dirname, 'data');
-const STUDENTS_FILE = path.join(DATA_DIR, 'students.json');
-const ATTENDANCE_FILE = path.join(DATA_DIR, 'attendance.json');
-
-// Ensure data directory exists
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR);
-}
-
-// Initialize files if they don't exist
-if (!fs.existsSync(STUDENTS_FILE)) {
-  fs.writeFileSync(STUDENTS_FILE, JSON.stringify([]));
-}
-if (!fs.existsSync(ATTENDANCE_FILE)) {
-  fs.writeFileSync(ATTENDANCE_FILE, JSON.stringify([]));
-}
-
-let studentsCache: any[] | null = null;
-let attendanceCache: any[] | null = null;
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
+  // Allow large payloads for Base64 face data images
   app.use(express.json({ limit: '50mb' }));
 
   app.use((req, res, next) => {
@@ -40,93 +23,87 @@ async function startServer() {
     next();
   });
 
-  // API Routes
-  app.get('/api/students', (req, res) => {
+  // --- API Routes using Prisma Database ---
+
+  // GET all students
+  app.get('/api/students', async (req, res) => {
     try {
-      if (!studentsCache) {
-        try {
-          studentsCache = JSON.parse(fs.readFileSync(STUDENTS_FILE, 'utf-8'));
-        } catch (e) {
-          studentsCache = [];
-        }
-      }
-      res.json(studentsCache);
+      const students = await prisma.student.findMany();
+      res.json(students);
     } catch (error) {
+      console.error("Error reading students from database:", error);
       res.status(500).json({ error: 'Failed to read students' });
     }
   });
 
-  app.post('/api/students', (req, res) => {
-    console.log("Received POST /api/students", req.body);
+  // POST a new student
+  app.post('/api/students', async (req, res) => {
+    console.log("Received POST /api/students");
     try {
-      if (!studentsCache) {
-        try {
-          studentsCache = JSON.parse(fs.readFileSync(STUDENTS_FILE, 'utf-8'));
-        } catch (e) {
-          studentsCache = [];
+      // We map 'class' from req.body to 'className' because 'class' is a reserved word
+      const { studentId, fullName, class: className, section, mobile, faceData } = req.body;
+
+      // Save to the real database using Prisma
+      const newStudent = await prisma.student.create({
+        data: {
+          studentId,
+          fullName,
+          className,
+          section,
+          mobile,
+          faceData 
         }
-      }
-      const newStudent = req.body;
-      studentsCache.push(newStudent);
-      
-      try {
-        fs.writeFileSync(STUDENTS_FILE, JSON.stringify(studentsCache, null, 2));
-      } catch (writeError) {
-        console.warn("Warning: Could not write to students.json (likely read-only filesystem like Vercel). Data saved in memory only.");
-      }
-      
+      });
+
       res.json(newStudent);
     } catch (error) {
-      console.error("Error saving student:", error);
+      console.error("Error saving student to database:", error);
       res.status(500).json({ error: 'Failed to save student' });
     }
   });
 
-  app.get('/api/attendance', (req, res) => {
+  // GET all attendance records
+  app.get('/api/attendance', async (req, res) => {
     try {
-      if (!attendanceCache) {
-        try {
-          attendanceCache = JSON.parse(fs.readFileSync(ATTENDANCE_FILE, 'utf-8'));
-        } catch (e) {
-          attendanceCache = [];
-        }
-      }
-      res.json(attendanceCache);
+      const records = await prisma.attendance.findMany();
+      res.json(records);
     } catch (error) {
+      console.error("Error reading attendance from database:", error);
       res.status(500).json({ error: 'Failed to read attendance' });
     }
   });
 
-  app.post('/api/attendance', (req, res) => {
+  // POST a new attendance record
+  app.post('/api/attendance', async (req, res) => {
+    console.log("Received POST /api/attendance");
     try {
-      if (!attendanceCache) {
-        try {
-          attendanceCache = JSON.parse(fs.readFileSync(ATTENDANCE_FILE, 'utf-8'));
-        } catch (e) {
-          attendanceCache = [];
-        }
-      }
-      const newRecord = req.body;
+      const { studentId, name, date, time, status } = req.body;
       
-      // Prevent duplicates for same student on same day (unless specific logic needed)
-      const today = new Date().toISOString().split('T')[0];
-      const exists = attendanceCache.some((r: any) => r.studentId === newRecord.studentId && r.name === newRecord.name && r.date === today);
-      
-      if (!exists) {
-        attendanceCache.push(newRecord);
-        try {
-          fs.writeFileSync(ATTENDANCE_FILE, JSON.stringify(attendanceCache, null, 2));
-        } catch (writeError) {
-          console.warn("Warning: Could not write to attendance.json (likely read-only filesystem like Vercel). Data saved in memory only.");
+      // Prevent duplicates: Check if attendance already exists for this student today
+      const existingRecord = await prisma.attendance.findFirst({
+        where: {
+          studentId: studentId,
+          date: date
         }
+      });
+      
+      if (!existingRecord) {
+        // Create new record in database
+        const newRecord = await prisma.attendance.create({
+          data: { studentId, name, date, time, status }
+        });
+        res.json(newRecord);
+      } else {
+        // Return existing record if already marked present today
+        res.json(existingRecord);
       }
-      res.json(newRecord);
     } catch (error) {
+      console.error("Error saving attendance to database:", error);
       res.status(500).json({ error: 'Failed to save attendance' });
     }
   });
 
-  // Vite middleware for development
+  // --- Vite / Frontend Rendering ---
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -142,32 +119,8 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`Server running on port ${PORT}`);
   });
-
-  app.post('/api/students', async (req, res) => {
-  console.log("Received POST /api/students");
-  try {
-    const { studentId, fullName, class: className, section, mobile, faceData } = req.body;
-
-    // Save to the real database using Prisma
-    const newStudent = await prisma.student.create({
-      data: {
-        studentId,
-        fullName,
-        className,
-        section,
-        mobile,
-        faceData // Make sure you compress this on the frontend!
-      }
-    });
-
-    res.json(newStudent);
-  } catch (error) {
-    console.error("Error saving student to database:", error);
-    res.status(500).json({ error: 'Failed to save student' });
-  }
-});
 }
 
 startServer();
