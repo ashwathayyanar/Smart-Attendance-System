@@ -171,6 +171,21 @@ app.delete('/api/attendance', async (req, res) => {
   }
 });
 
+// DELETE a specific student by ID
+app.delete('/api/students/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    // This will remove the student from the Singapore database
+    await prisma.student.delete({
+      where: { studentId: id }
+    });
+    res.json({ message: 'Student deleted successfully' });
+  } catch (error) {
+    console.error("Error deleting student:", error);
+    res.status(500).json({ error: 'Failed to delete student' });
+  }
+});
+
   // --- 3. FRONTEND SERVING / VITE ---
   if (process.env.NODE_ENV !== 'production') {
     const vitePkg = 'vite';

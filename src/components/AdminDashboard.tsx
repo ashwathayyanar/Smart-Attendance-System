@@ -7,7 +7,7 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Download,
-  Trash2 // Added for the Clear feature
+  Trash2 // Added for Delete feature
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -49,13 +49,30 @@ export default function AdminDashboard() {
     fetchData();
   }, []);
 
-  // --- FEATURE: CLEAR LOGS LOGIC ---
+  // --- FEATURE: DELETE STUDENT LOGIC ---
+  const handleDeleteStudent = async (studentId: string, studentName: string) => {
+    if (window.confirm(`Are you sure you want to delete ${studentName}? This will permanently remove their registration and face data.`)) {
+      try {
+        const res = await fetch(`/api/students/${studentId}`, { method: 'DELETE' });
+        if (res.ok) {
+          // Instantly remove from the UI list
+          setStudents(students.filter(s => (s.id || (s as any).studentId) !== studentId));
+        } else {
+          alert('Failed to delete student from database.');
+        }
+      } catch (err) {
+        console.error('Delete error:', err);
+      }
+    }
+  };
+
+  // --- FEATURE: CLEAR ATTENDANCE LOGIC ---
   const handleResetAttendance = async () => {
     if (window.confirm('WARNING: This will clear all attendance records. Are you sure you want to start fresh for the next day?')) {
       try {
         const res = await fetch('/api/attendance', { method: 'DELETE' });
         if (res.ok) {
-          setAttendance([]); // Instantly resets the UI to 0
+          setAttendance([]); 
         }
       } catch (err) {
         console.error('Failed to reset attendance:', err);
@@ -154,7 +171,6 @@ export default function AdminDashboard() {
               <h3 className="font-bold text-lg">Weekly Overview</h3>
               <p className="text-sm opacity-50">Attendance trends for the current week</p>
             </div>
-            {/* Legend and New Clear Button */}
             <div className="flex items-center gap-6">
               <div className="hidden md:flex items-center gap-4 text-sm font-medium">
                 <div className="flex items-center gap-2">
@@ -162,6 +178,7 @@ export default function AdminDashboard() {
                   <span>Present</span>
                 </div>
               </div>
+              {/* CLEAR LOGS BUTTON */}
               <button 
                 onClick={handleResetAttendance}
                 className="flex items-center gap-2 px-4 py-2 bg-rose-500/10 text-rose-500 rounded-xl text-xs font-bold hover:bg-rose-500 hover:text-white transition-all"
@@ -211,12 +228,12 @@ export default function AdminDashboard() {
                 </div>
               </div>
             ))}
-            {attendance.length === 0 && <p className="text-center opacity-50 py-12 italic text-sm">No activity yet. Logs cleared.</p>}
+            {attendance.length === 0 && <p className="text-center opacity-50 py-12 italic text-sm">No activity yet.</p>}
           </div>
         </div>
       </div>
 
-      {/* Registered Students List */}
+      {/* Registered Students List with DELETE ACTION */}
       <div className="bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm overflow-hidden">
         <h3 className="font-bold text-lg mb-6 flex items-center gap-2">
           <Users className="text-blue-500" size={20} />
@@ -232,21 +249,36 @@ export default function AdminDashboard() {
                 <th className="px-6 py-4">Section</th>
                 <th className="px-6 py-4">Mobile</th>
                 <th className="px-6 py-4">Registration Date</th>
+                <th className="px-6 py-4 text-right">Action</th> {/* New Column */}
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
-              {students.map((student, i) => (
-                <tr key={i} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-all">
-                  <td className="px-6 py-4 font-mono text-sm">{student.id}</td>
-                  <td className="px-6 py-4 font-medium">{student.name}</td>
-                  <td className="px-6 py-4 text-sm opacity-70">{student.className || '-'}</td>
-                  <td className="px-6 py-4 text-sm opacity-70">{student.section || '-'}</td>
-                  <td className="px-6 py-4 text-sm opacity-70">{student.mobile}</td>
-                  <td className="px-6 py-4 text-sm opacity-70">
-                    {student.createdAt ? new Date(student.createdAt).toLocaleDateString() : 'N/A'}
-                  </td>
-                </tr>
-              ))}
+              {students.map((student, i) => {
+                const sId = student.id || (student as any).studentId || "";
+                const sName = student.name || (student as any).fullName || "";
+                return (
+                  <tr key={i} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-all group">
+                    <td className="px-6 py-4 font-mono text-sm">{sId}</td>
+                    <td className="px-6 py-4 font-medium">{sName}</td>
+                    <td className="px-6 py-4 text-sm opacity-70">{student.className || '-'}</td>
+                    <td className="px-6 py-4 text-sm opacity-70">{student.section || '-'}</td>
+                    <td className="px-6 py-4 text-sm opacity-70">{student.mobile}</td>
+                    <td className="px-6 py-4 text-sm opacity-70">
+                      {student.createdAt ? new Date(student.createdAt).toLocaleDateString() : 'N/A'}
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      {/* DELETE STUDENT BUTTON */}
+                      <button 
+                        onClick={() => handleDeleteStudent(sId, sName)}
+                        className="p-2 text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                        title="Delete Student"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
