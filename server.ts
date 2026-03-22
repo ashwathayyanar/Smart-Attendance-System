@@ -24,6 +24,9 @@ if (!fs.existsSync(ATTENDANCE_FILE)) {
   fs.writeFileSync(ATTENDANCE_FILE, JSON.stringify([]));
 }
 
+let studentsCache: any[] | null = null;
+let attendanceCache: any[] | null = null;
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -38,8 +41,14 @@ async function startServer() {
   // API Routes
   app.get('/api/students', (req, res) => {
     try {
-      const students = JSON.parse(fs.readFileSync(STUDENTS_FILE, 'utf-8'));
-      res.json(students);
+      if (!studentsCache) {
+        try {
+          studentsCache = JSON.parse(fs.readFileSync(STUDENTS_FILE, 'utf-8'));
+        } catch (e) {
+          studentsCache = [];
+        }
+      }
+      res.json(studentsCache);
     } catch (error) {
       res.status(500).json({ error: 'Failed to read students' });
     }
@@ -48,10 +57,22 @@ async function startServer() {
   app.post('/api/students', (req, res) => {
     console.log("Received POST /api/students", req.body);
     try {
-      const students = JSON.parse(fs.readFileSync(STUDENTS_FILE, 'utf-8'));
+      if (!studentsCache) {
+        try {
+          studentsCache = JSON.parse(fs.readFileSync(STUDENTS_FILE, 'utf-8'));
+        } catch (e) {
+          studentsCache = [];
+        }
+      }
       const newStudent = req.body;
-      students.push(newStudent);
-      fs.writeFileSync(STUDENTS_FILE, JSON.stringify(students, null, 2));
+      studentsCache.push(newStudent);
+      
+      try {
+        fs.writeFileSync(STUDENTS_FILE, JSON.stringify(studentsCache, null, 2));
+      } catch (writeError) {
+        console.warn("Warning: Could not write to students.json (likely read-only filesystem like Vercel). Data saved in memory only.");
+      }
+      
       res.json(newStudent);
     } catch (error) {
       console.error("Error saving student:", error);
@@ -61,8 +82,14 @@ async function startServer() {
 
   app.get('/api/attendance', (req, res) => {
     try {
-      const attendance = JSON.parse(fs.readFileSync(ATTENDANCE_FILE, 'utf-8'));
-      res.json(attendance);
+      if (!attendanceCache) {
+        try {
+          attendanceCache = JSON.parse(fs.readFileSync(ATTENDANCE_FILE, 'utf-8'));
+        } catch (e) {
+          attendanceCache = [];
+        }
+      }
+      res.json(attendanceCache);
     } catch (error) {
       res.status(500).json({ error: 'Failed to read attendance' });
     }
@@ -70,16 +97,26 @@ async function startServer() {
 
   app.post('/api/attendance', (req, res) => {
     try {
-      const attendance = JSON.parse(fs.readFileSync(ATTENDANCE_FILE, 'utf-8'));
+      if (!attendanceCache) {
+        try {
+          attendanceCache = JSON.parse(fs.readFileSync(ATTENDANCE_FILE, 'utf-8'));
+        } catch (e) {
+          attendanceCache = [];
+        }
+      }
       const newRecord = req.body;
       
       // Prevent duplicates for same student on same day (unless specific logic needed)
       const today = new Date().toISOString().split('T')[0];
-      const exists = attendance.some((r: any) => r.studentId === newRecord.studentId && r.name === newRecord.name && r.date === today);
+      const exists = attendanceCache.some((r: any) => r.studentId === newRecord.studentId && r.name === newRecord.name && r.date === today);
       
       if (!exists) {
-        attendance.push(newRecord);
-        fs.writeFileSync(ATTENDANCE_FILE, JSON.stringify(attendance, null, 2));
+        attendanceCache.push(newRecord);
+        try {
+          fs.writeFileSync(ATTENDANCE_FILE, JSON.stringify(attendanceCache, null, 2));
+        } catch (writeError) {
+          console.warn("Warning: Could not write to attendance.json (likely read-only filesystem like Vercel). Data saved in memory only.");
+        }
       }
       res.json(newRecord);
     } catch (error) {
