@@ -31,10 +31,20 @@ async function startServer() {
   // --- API Routes using Prisma Database ---
 
   // GET all students
+ // GET all students
   app.get('/api/students', async (req, res) => {
     try {
       const students = await prisma.student.findMany();
-      res.json(students);
+      
+      // Translate database labels back to what the frontend might expect!
+      const frontendReadyStudents = students.map(student => ({
+        ...student,
+        id: student.studentId,       // The frontend likely looks for 'id'
+        name: student.fullName,      // The frontend likely looks for 'name'
+        class: student.className     // The frontend likely looks for 'class'
+      }));
+
+      res.json(frontendReadyStudents);
     } catch (error) {
       console.error("Error reading students from database:", error);
       res.status(500).json({ error: 'Failed to read students' });
