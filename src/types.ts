@@ -10,17 +10,24 @@ export interface User {
 }
 
 export interface Student {
+  // Database & Logic Labels
   id: string;
-  studentId?: string;    // Added for backend compatibility
+  studentId?: string; 
   name: string;
-  fullName?: string;     // Added for backend compatibility
+  fullName?: string;
+  
+  // Department Details
   className: string;
   section: string;
   mobile: string;
-  parentMobile?: string; // Made optional for safety
-  faceDescriptor: number[] | any; // Allows for parsed JSON from database
-  descriptors?: number[][]; // Added for AI FaceMatcher compatibility
-  createdAt: string;
+  parentMobile?: string;
+
+  // AI & Face Recognition Data
+  faceDescriptor?: number[] | any;
+  faceData?: any; // <--- THIS FIXES THE RED ERRORS
+  descriptors?: number[][];
+  
+  createdAt?: string;
 }
 
 export interface AttendanceRecord {
@@ -28,8 +35,8 @@ export interface AttendanceRecord {
   name: string;
   className?: string;
   section?: string;
-  date: string; // YYYY-MM-DD
-  time: string; // HH:mm:ss
+  date: string;
+  time: string;
   status: 'PRESENT' | 'ABSENT';
   confidence: number;
   emotion?: string;
