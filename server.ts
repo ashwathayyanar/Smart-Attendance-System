@@ -2,6 +2,7 @@ import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
 
 // NOTICE: We completely removed the Vite import from the top of the file!
 
@@ -9,8 +10,12 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Initialize Prisma
-const prisma = new PrismaClient();
-
+// Initialize Prisma
+// Initialize Prisma 7 with the PostgreSQL Adapter
+const adapter = new PrismaPg({
+  connectionString: process.env.DATABASE_URL!,
+});
+const prisma = new PrismaClient({ adapter });
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
