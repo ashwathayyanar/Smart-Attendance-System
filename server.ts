@@ -41,30 +41,34 @@ async function startServer() {
 
   // --- 2. API ROUTES ---
 
-  // GET all students (with Catch-All labels for the AI model)
+  // GET all students (Formatted for AI Face Matching)
   app.get('/api/students', async (req, res) => {
     try {
       const students = await prisma.student.findMany();
       
       const frontendReadyStudents = students.map(student => {
-        let parsedFaceData = student.faceData;
+        let numericDescriptors = [];
+        
         try {
-          parsedFaceData = JSON.parse(student.faceData);
+          // Convert the text data from the database back into numbers for the AI
+          const parsed = JSON.parse(student.faceData);
+          if (Array.isArray(parsed)) {
+            numericDescriptors = parsed.map(Number);
+          } else if (parsed && parsed.descriptors) {
+            numericDescriptors = Array.from(parsed.descriptors[0]).map(Number);
+          }
         } catch (e) {
-          // Keep as string if not JSON
+          console.error("Could not parse face data for student:", student.studentId);
         }
 
         return {
           ...student,
           id: student.studentId,
-          studentId: student.studentId,
           name: student.fullName,
-          fullName: student.fullName,
-          faceData: parsedFaceData,
-          faceDescriptor: parsedFaceData,
-          descriptors: parsedFaceData ? [parsedFaceData] : [],
-          class: student.className,
-          className: student.className
+          // We provide the data in every format the AI library might look for
+          descriptors: numericDescriptors.length > 0 ? [numericDescriptors] : [],
+          faceDescriptor: numericDescriptors,
+          faceData: numericDescriptors
         };
       });
 
