@@ -104,45 +104,60 @@ async function startServer() {
 
   // POST a new attendance record
   app.post('/api/attendance', async (req, res) => {
-    console.log("Received POST /api/attendance. Data:", req.body);
-    try {
-      // Catch-all for different frontend labels
-      const studentId = String(req.body.studentId || req.body.id || "");
-      const name = String(req.body.name || req.body.fullName || req.body.studentName || "Unknown");
-      const status = String(req.body.status || "Present");
-      
-      // Get current date/time if frontend doesn't send it
-      const now = new Date();
-      const date = String(req.body.date || now.toISOString().split('T')[0]); // YYYY-MM-DD
-      const time = String(req.body.time || now.toLocaleTimeString());
+    // DEBUG: This will show us the EXACT labels the frontend is using in Vercel Logs
+    console.log("ATTENDANCE DEBUG - Full Request Body:", JSON.stringify(req.body, null, 2));
 
-      if (!studentId || studentId === "") {
-        console.error("Attendance Error: No studentId found in request");
-        return res.status(400).json({ error: 'Missing student identifier' });
+    try {
+      // 1. Extract the ID using every possible label
+      const studentId = req.body.studentId || req.body.id || req.body.uid || req.body.rollNo;
+      
+      // 2. Extract the Name using every possible label
+      const name = req.body.name || req.body.fullName || req.body.studentName || req.body.label || "Unknown Student";
+      
+      // 3. Handle Date and Time automatically if missing
+      const now = new Date();
+      const date = req.body.date || now.toISOString().split('T')[0]; // Format: YYYY-MM-DD
+      const time = req.body.time || now.toTimeString().split(' ')[0]; // Format: HH:MM:SS
+      const status = req.body.status || "Present";
+
+      // Validation check
+      if (!studentId) {
+        console.error("ATTENDANCE ERROR: No student identifier found in the request.");
+        return res.status(400).json({ error: 'Backend could not find a Student ID in the request.' });
       }
 
-      // Check if attendance already exists for this student today
+      // Convert to String to match Prisma Schema exactly
+      const sId = String(studentId);
+      const sName = String(name);
+
+      // 4. Check if attendance already exists for this student today
       const existingRecord = await prisma.attendance.findFirst({
         where: {
-          studentId: studentId,
+          studentId: sId,
           date: date
         }
       });
       
       if (!existingRecord) {
-        // Create new record in database
+        // Create the new record
         const newRecord = await prisma.attendance.create({
-          data: { studentId, name, date, time, status }
+          data: { 
+            studentId: sId, 
+            name: sName, 
+            date: date, 
+            time: time, 
+            status: status 
+          }
         });
-        console.log("Attendance recorded for:", name);
+        console.log(`✅ Success: Attendance marked for ${sName} (${sId})`);
         res.json(newRecord);
       } else {
-        console.log("Attendance already exists for today:", name);
-        res.json(existingRecord); // Already marked present
+        console.log(`ℹ️ Info: ${sName} already marked present for today.`);
+        res.json(existingRecord); 
       }
     } catch (error) {
-      console.error("Error saving attendance to database:", error);
-      res.status(500).json({ error: 'Failed to save attendance' });
+      console.error("❌ CRITICAL ATTENDANCE ERROR:", error);
+      res.status(500).json({ error: 'Database failed to save attendance record.' });
     }
   });
   // --- Vite / Frontend Rendering ---
