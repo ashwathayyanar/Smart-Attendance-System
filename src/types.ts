@@ -11,12 +11,15 @@ export interface User {
 
 export interface Student {
   id: string;
+  studentId?: string;    // Added for backend compatibility
   name: string;
+  fullName?: string;     // Added for backend compatibility
   className: string;
   section: string;
   mobile: string;
-  parentMobile: string;
-  faceDescriptor: number[]; // 128 values
+  parentMobile?: string; // Made optional for safety
+  faceDescriptor: number[] | any; // Allows for parsed JSON from database
+  descriptors?: number[][]; // Added for AI FaceMatcher compatibility
   createdAt: string;
 }
 
