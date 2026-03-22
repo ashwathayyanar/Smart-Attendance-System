@@ -42,20 +42,35 @@ async function startServer() {
   });
 
   // POST a new student
+  // POST a new student
   app.post('/api/students', async (req, res) => {
-    console.log("Received POST /api/students");
+    // This will print EXACTLY what the frontend sends into your Vercel logs
+    console.log("Received POST /api/students. Frontend sent:", req.body); 
+    
     try {
-      const { studentId, fullName, class: className, section, mobile, faceData } = req.body;
+      // Look for the data using multiple common names your frontend might be using
+      const studentId = req.body.studentId || req.body.id || req.body.student_id;
+      const fullName = req.body.fullName || req.body.name || req.body.studentName;
+      const className = req.body.class || req.body.className || req.body.course || "N/A";
+      const section = req.body.section || "N/A";
+      const mobile = req.body.mobile || req.body.phone || "N/A";
+      const faceData = req.body.faceData || req.body.image || req.body.photo || req.body.faceDescriptor;
+
+      // Make sure we at least have the absolute necessities
+      if (!studentId || !fullName || !faceData) {
+        console.error("Missing critical data! We extracted:", { studentId, fullName, faceData });
+        return res.status(400).json({ error: 'Frontend is missing required fields.' });
+      }
 
       // Save to the real database using Prisma
       const newStudent = await prisma.student.create({
         data: {
-          studentId,
-          fullName,
-          className,
-          section,
-          mobile,
-          faceData 
+          studentId: String(studentId),
+          fullName: String(fullName),
+          className: String(className),
+          section: String(section),
+          mobile: String(mobile),
+          faceData: String(faceData) 
         }
       });
 
