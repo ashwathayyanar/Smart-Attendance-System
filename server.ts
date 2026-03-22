@@ -104,10 +104,24 @@ async function startServer() {
 
   // POST a new attendance record
   app.post('/api/attendance', async (req, res) => {
-    console.log("Received POST /api/attendance");
+    console.log("Received POST /api/attendance. Data:", req.body);
     try {
-      const { studentId, name, date, time, status } = req.body;
+      // Catch-all for different frontend labels
+      const studentId = String(req.body.studentId || req.body.id || "");
+      const name = String(req.body.name || req.body.fullName || req.body.studentName || "Unknown");
+      const status = String(req.body.status || "Present");
       
+      // Get current date/time if frontend doesn't send it
+      const now = new Date();
+      const date = String(req.body.date || now.toISOString().split('T')[0]); // YYYY-MM-DD
+      const time = String(req.body.time || now.toLocaleTimeString());
+
+      if (!studentId || studentId === "") {
+        console.error("Attendance Error: No studentId found in request");
+        return res.status(400).json({ error: 'Missing student identifier' });
+      }
+
+      // Check if attendance already exists for this student today
       const existingRecord = await prisma.attendance.findFirst({
         where: {
           studentId: studentId,
@@ -116,19 +130,21 @@ async function startServer() {
       });
       
       if (!existingRecord) {
+        // Create new record in database
         const newRecord = await prisma.attendance.create({
           data: { studentId, name, date, time, status }
         });
+        console.log("Attendance recorded for:", name);
         res.json(newRecord);
       } else {
-        res.json(existingRecord);
+        console.log("Attendance already exists for today:", name);
+        res.json(existingRecord); // Already marked present
       }
     } catch (error) {
       console.error("Error saving attendance to database:", error);
       res.status(500).json({ error: 'Failed to save attendance' });
     }
   });
-
   // --- Vite / Frontend Rendering ---
   if (process.env.NODE_ENV !== 'production') {
     // We use a "Dynamic Import" trick here so Vercel ignores this entirely
