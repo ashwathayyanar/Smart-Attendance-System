@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { ShieldCheck, User, Lock, Phone, Camera, ArrowLeft } from 'lucide-react';
-import { Role, User as UserType } from '../types';
+import { ShieldCheck, User, Lock, Camera, ArrowLeft, Fingerprint, Activity } from 'lucide-react';
+import { User as UserType } from '../types';
 import StudentRegistration from './StudentRegistration';
 
 interface LandingProps {
@@ -34,208 +34,202 @@ export default function Landing({ onLogin, darkMode }: LandingProps) {
       try {
         const res = await fetch('/api/students');
         const students = await res.json();
-        const student = students.find((s: any) => s.id.trim() === id.trim() && s.name.trim().toLowerCase() === name.trim().toLowerCase());
+        const student = students.find((s: any) => 
+          s.id.trim() === id.trim() && 
+          s.name.trim().toLowerCase() === name.trim().toLowerCase()
+        );
         if (student) {
-          onLogin({ id: student.id, name: student.name, role: 'student', mobile: student.mobile, className: student.className, section: student.section });
+          onLogin({ 
+            id: student.id, 
+            name: student.name, 
+            role: 'student', 
+            mobile: student.mobile, 
+            className: student.className, 
+            section: student.section 
+          });
         } else {
-          setError('Student not found. Please check ID and Name.');
+          setError('Student records not found. Verify ID & Name.');
         }
       } catch (err) {
-        setError('Failed to verify student');
+        setError('Database connection failed.');
       }
     } else {
-      setError('Please enter Student ID and Name');
+      setError('Please fill all fields');
     }
   };
 
+  // Professional Input Component to reuse
+  const AuthInput = ({ icon: Icon, label, ...props }: any) => (
+    <div className="space-y-1.5 group">
+      <label className="block text-xs font-bold uppercase tracking-widest opacity-40 ml-1">
+        {label}
+      </label>
+      <div className="relative">
+        <div className="absolute left-4 top-1/2 -translate-y-1/2 opacity-30 group-focus-within:opacity-100 group-focus-within:text-emerald-500 transition-all">
+          <Icon size={18} />
+        </div>
+        <input
+          {...props}
+          className={`w-full pl-11 pr-4 py-3.5 rounded-2xl border transition-all outline-none text-sm font-medium ${
+            darkMode 
+              ? 'bg-zinc-800/50 border-zinc-700/50 focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10 focus:bg-zinc-800' 
+              : 'bg-zinc-50 border-zinc-200 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/5 focus:bg-white'
+          }`}
+        />
+      </div>
+    </div>
+  );
+
   if (view === 'student-register') {
     return (
-      <div className={`min-h-screen p-4 md:p-8 ${darkMode ? 'bg-zinc-950 text-zinc-100' : 'bg-zinc-50 text-zinc-900'}`}>
-        <button 
-          onClick={() => setView('student-choice')}
-          className="flex items-center gap-2 mb-6 px-4 py-2 rounded-xl bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 transition-all font-medium"
-        >
-          <ArrowLeft size={20} />
-          Back
-        </button>
-        <div className="max-w-4xl mx-auto">
-          <div className="flex flex-col items-center mb-8">
-            <div className="w-16 h-16 bg-emerald-500 rounded-2xl flex items-center justify-center text-white mb-4 shadow-xl shadow-emerald-500/20">
-              <Camera size={32} />
+      <div className={`min-h-screen p-6 transition-colors duration-500 ${darkMode ? 'bg-zinc-950 text-zinc-100' : 'bg-zinc-50 text-zinc-900'}`}>
+        <div className="max-w-5xl mx-auto">
+          <button 
+            onClick={() => setView('student-choice')}
+            className="flex items-center gap-2 mb-8 px-5 py-2.5 rounded-xl bg-zinc-200 dark:bg-zinc-800 hover:scale-105 active:scale-95 transition-all font-bold text-sm shadow-sm"
+          >
+            <ArrowLeft size={18} />
+            Return to Portal
+          </button>
+          
+          <div className="flex flex-col items-center mb-10">
+            <div className="w-20 h-20 bg-emerald-500 rounded-3xl flex items-center justify-center text-white mb-4 shadow-2xl shadow-emerald-500/30">
+              <Camera size={36} />
             </div>
-            <h1 className="text-3xl font-bold tracking-tight">Student Registration</h1>
-            <p className="opacity-50 text-sm mt-2">Capture your face to register for smart attendance</p>
+            <h1 className="text-4xl font-black tracking-tighter">Biometric Registration</h1>
+            <p className="opacity-50 text-sm mt-2 font-medium tracking-wide">Secure your identity in the Singapore Cloud Database</p>
           </div>
-          <StudentRegistration onRegisterSuccess={() => setView('student-login')} />
+          
+          <div className={`p-8 rounded-[2.5rem] border shadow-2xl ${darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200'}`}>
+             <StudentRegistration onRegisterSuccess={() => setView('student-login')} />
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className={`min-h-screen flex items-center justify-center p-4 ${darkMode ? 'bg-zinc-950 text-zinc-100' : 'bg-zinc-50 text-zinc-900'}`}>
-      <div className={`w-full max-w-md p-8 rounded-3xl shadow-2xl ${darkMode ? 'bg-zinc-900 border border-zinc-800' : 'bg-white border border-zinc-200'}`}>
-        <div className="flex flex-col items-center mb-8">
-          <div className="relative flex items-center justify-center mb-6">
-            <div className="absolute inset-0 bg-emerald-500 blur-xl opacity-20 rounded-full"></div>
-            <div className="relative w-20 h-20 bg-gradient-to-tr from-emerald-600 to-emerald-400 rounded-[2rem] flex items-center justify-center text-white shadow-2xl shadow-emerald-500/30 border border-emerald-300/30 transform rotate-3 hover:rotate-0 transition-all duration-300">
-              <ShieldCheck size={40} className="absolute opacity-40" />
-              <User size={24} className="relative z-10" />
+    <div className={`min-h-screen flex items-center justify-center p-6 relative overflow-hidden transition-colors duration-500 ${darkMode ? 'bg-zinc-950' : 'bg-zinc-100'}`}>
+      
+      {/* Decorative Background Elements */}
+      <div className="absolute top-[-10%] right-[-10%] w-[40%] h-[40%] bg-emerald-500/10 blur-[120px] rounded-full"></div>
+      <div className="absolute bottom-[-10%] left-[-10%] w-[40%] h-[40%] bg-emerald-500/5 blur-[120px] rounded-full"></div>
+
+      <div className={`w-full max-w-md p-10 rounded-[3rem] shadow-2xl relative z-10 transition-all duration-300 ${
+        darkMode ? 'bg-zinc-900/80 border border-zinc-800 backdrop-blur-xl' : 'bg-white border border-zinc-200'
+      }`}>
+        
+        {/* Logo Section */}
+        <div className="flex flex-col items-center mb-10">
+          <div className="relative mb-6">
+            <div className="absolute inset-0 bg-emerald-500 blur-2xl opacity-20 animate-pulse"></div>
+            <div className="relative w-20 h-20 bg-gradient-to-tr from-emerald-600 to-teal-400 rounded-[2rem] flex items-center justify-center text-white shadow-2xl border border-emerald-300/20 transform hover:scale-110 transition-transform duration-500">
+              <ShieldCheck size={32} />
             </div>
           </div>
-          <h1 className="text-3xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-emerald-600 to-teal-500">Smart Attendance</h1>
-          <p className="opacity-60 text-sm mt-2 font-medium">Secure real-time face recognition system</p>
+          <h1 className="text-3xl font-black tracking-tight mb-1">
+            AI<span className="text-emerald-500">ATTEND</span>
+          </h1>
+          <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
+             <Activity size={12} className="animate-pulse" />
+             <span className="text-[10px] font-bold uppercase tracking-widest">System Active</span>
+          </div>
         </div>
 
+        {/* View Switcher Logic */}
         {view === 'landing' && (
           <div className="space-y-4">
             <button
               onClick={() => setView('student-choice')}
-              className="w-full flex items-center justify-center gap-3 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-4 rounded-xl transition-all shadow-lg shadow-emerald-500/20 active:scale-[0.98]"
+              className="w-full flex items-center justify-between gap-3 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-5 px-6 rounded-2xl transition-all shadow-xl shadow-emerald-500/20 active:scale-[0.98] group"
             >
-              <User size={24} />
-              Student Portal
+              <div className="flex items-center gap-4">
+                <User size={24} />
+                <span className="text-lg tracking-tight">Student Portal</span>
+              </div>
+              <ArrowLeft size={20} className="rotate-180 opacity-50 group-hover:translate-x-1 transition-transform" />
             </button>
             <button
               onClick={() => setView('admin-login')}
-              className="w-full flex items-center justify-center gap-3 bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-4 rounded-xl transition-all shadow-lg shadow-zinc-800/20 active:scale-[0.98]"
+              className={`w-full flex items-center gap-4 font-bold py-5 px-6 rounded-2xl transition-all active:scale-[0.98] border ${
+                darkMode ? 'bg-zinc-800 hover:bg-zinc-700 border-zinc-700' : 'bg-white hover:bg-zinc-50 border-zinc-200 shadow-sm'
+              }`}
             >
-              <ShieldCheck size={24} />
-              Admin Portal
+              <ShieldCheck size={24} className="text-emerald-500" />
+              <span className="text-lg tracking-tight">Administrator</span>
             </button>
           </div>
         )}
 
         {view === 'student-choice' && (
-          <div className="space-y-4">
-            <button
-              onClick={() => setView('landing')}
-              className="mb-4 flex items-center gap-2 text-sm font-medium opacity-60 hover:opacity-100 transition-opacity"
-            >
-              <ArrowLeft size={16} /> Back
+          <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-300">
+            <button onClick={() => setView('landing')} className="flex items-center gap-2 text-xs font-black uppercase tracking-widest opacity-40 hover:opacity-100 transition-all mb-6">
+              <ArrowLeft size={14} /> Back to Start
             </button>
             <button
               onClick={() => setView('student-login')}
-              className="w-full flex items-center justify-center gap-3 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-4 rounded-xl transition-all shadow-lg shadow-emerald-500/20 active:scale-[0.98]"
+              className="w-full flex items-center gap-4 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-4 px-6 rounded-2xl transition-all"
             >
-              <User size={24} />
-              Login
+              <Fingerprint size={24} />
+              Login with ID
             </button>
             <button
               onClick={() => setView('student-register')}
-              className="w-full flex items-center justify-center gap-3 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 font-bold py-4 rounded-xl transition-all active:scale-[0.98]"
+              className={`w-full flex items-center gap-4 font-bold py-4 px-6 rounded-2xl border transition-all ${
+                darkMode ? 'bg-zinc-800 border-zinc-700 hover:bg-zinc-700' : 'bg-white border-zinc-200 hover:bg-zinc-50'
+              }`}
             >
-              <Camera size={24} />
-              Register
+              <Camera size={24} className="text-emerald-500" />
+              New Registration
             </button>
           </div>
         )}
 
-        {view === 'admin-login' && (
-          <form onSubmit={handleAdminLogin} className="space-y-4">
-            <button
-              type="button"
-              onClick={() => setView('landing')}
-              className="mb-4 flex items-center gap-2 text-sm font-medium opacity-60 hover:opacity-100 transition-opacity"
-            >
-              <ArrowLeft size={16} /> Back
+        {(view === 'admin-login' || view === 'student-login') && (
+          <form onSubmit={view === 'admin-login' ? handleAdminLogin : handleStudentLogin} className="space-y-5 animate-in zoom-in-95 duration-300">
+            <button type="button" onClick={() => setView(view === 'admin-login' ? 'landing' : 'student-choice')} className="flex items-center gap-2 text-xs font-black uppercase tracking-widest opacity-40 hover:opacity-100 transition-all mb-4">
+              <ArrowLeft size={14} /> Change Method
             </button>
-            <div>
-              <label className="block text-sm font-medium mb-1.5 opacity-70">Username</label>
-              <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 opacity-30" size={18} />
-                <input
-                  type="text"
-                  value={id}
-                  onChange={(e) => setId(e.target.value)}
-                  className={`w-full pl-10 pr-4 py-3 rounded-xl border transition-all outline-none focus:ring-2 focus:ring-emerald-500/20 ${
-                    darkMode ? 'bg-zinc-800 border-zinc-700 focus:border-emerald-500' : 'bg-zinc-50 border-zinc-200 focus:border-emerald-500'
-                  }`}
-                  placeholder="Enter username"
-                  required
-                />
+
+            <AuthInput 
+              icon={User} 
+              label={view === 'admin-login' ? "Admin ID" : "Student ID"}
+              type="text"
+              value={id}
+              onChange={(e: any) => setId(e.target.value)}
+              placeholder="e.g. 2024CS001"
+              required
+            />
+
+            <AuthInput 
+              icon={view === 'admin-login' ? Lock : User} 
+              label={view === 'admin-login' ? "Password" : "Full Name"}
+              type={view === 'admin-login' ? "password" : "text"}
+              value={view === 'admin-login' ? password : name}
+              onChange={(e: any) => view === 'admin-login' ? setPassword(e.target.value) : setName(e.target.value)}
+              placeholder={view === 'admin-login' ? "••••••••" : "e.g. John Doe"}
+              required
+            />
+
+            {error && (
+              <div className="bg-rose-500/10 border border-rose-500/20 text-rose-500 px-4 py-3 rounded-xl text-xs font-bold flex items-center gap-2">
+                <ShieldCheck size={14} /> {error}
               </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1.5 opacity-70">Password</label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 opacity-30" size={18} />
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className={`w-full pl-10 pr-4 py-3 rounded-xl border transition-all outline-none focus:ring-2 focus:ring-emerald-500/20 ${
-                    darkMode ? 'bg-zinc-800 border-zinc-700 focus:border-emerald-500' : 'bg-zinc-50 border-zinc-200 focus:border-emerald-500'
-                  }`}
-                  placeholder="Enter password"
-                  required
-                />
-              </div>
-            </div>
-            {error && <p className="text-red-500 text-sm font-medium">{error}</p>}
+            )}
+
             <button
               type="submit"
-              className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-emerald-500/20 active:scale-[0.98]"
+              className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-black py-4 rounded-2xl transition-all shadow-xl shadow-emerald-500/20 active:scale-95 text-sm uppercase tracking-widest"
             >
-              Sign In as Admin
+              Authorize Access
             </button>
           </form>
         )}
 
-        {view === 'student-login' && (
-          <form onSubmit={handleStudentLogin} className="space-y-4">
-            <button
-              type="button"
-              onClick={() => setView('student-choice')}
-              className="mb-4 flex items-center gap-2 text-sm font-medium opacity-60 hover:opacity-100 transition-opacity"
-            >
-              <ArrowLeft size={16} /> Back
-            </button>
-            <div>
-              <label className="block text-sm font-medium mb-1.5 opacity-70">Student ID</label>
-              <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 opacity-30" size={18} />
-                <input
-                  type="text"
-                  value={id}
-                  onChange={(e) => setId(e.target.value)}
-                  className={`w-full pl-10 pr-4 py-3 rounded-xl border transition-all outline-none focus:ring-2 focus:ring-emerald-500/20 ${
-                    darkMode ? 'bg-zinc-800 border-zinc-700 focus:border-emerald-500' : 'bg-zinc-50 border-zinc-200 focus:border-emerald-500'
-                  }`}
-                  placeholder="Enter Student ID"
-                  required
-                />
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1.5 opacity-70">Full Name</label>
-              <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 opacity-30" size={18} />
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className={`w-full pl-10 pr-4 py-3 rounded-xl border transition-all outline-none focus:ring-2 focus:ring-emerald-500/20 ${
-                    darkMode ? 'bg-zinc-800 border-zinc-700 focus:border-emerald-500' : 'bg-zinc-50 border-zinc-200 focus:border-emerald-500'
-                  }`}
-                  placeholder="Enter Full Name"
-                  required
-                />
-              </div>
-            </div>
-            {error && <p className="text-red-500 text-sm font-medium">{error}</p>}
-            <button
-              type="submit"
-              className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-emerald-500/20 active:scale-[0.98]"
-            >
-              Sign In as Student
-            </button>
-          </form>
-        )}
-
-        <div className="mt-8 pt-6 border-t border-zinc-800 text-center opacity-40 text-xs">
-          <p>© 2026 Smart Attendance System</p>
-          <p>Production Ready • Secure • Real-time</p>
+        <div className="mt-10 pt-6 border-t border-zinc-800/50 text-center">
+          <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em]">
+            Precision Biometric System v2.1
+          </p>
         </div>
       </div>
     </div>
