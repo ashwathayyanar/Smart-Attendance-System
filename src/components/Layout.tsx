@@ -11,9 +11,10 @@ import {
   ShieldCheck,
   Menu,
   X,
-  ChevronRight
+  ChevronRight,
+  Activity
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { User as UserType } from '../types';
 
 interface LayoutProps {
@@ -61,14 +62,16 @@ export default function Layout({ user, onLogout, children, darkMode, setDarkMode
         ${darkMode ? 'bg-zinc-900/50 border-zinc-800/50' : 'bg-white border-zinc-200'} 
         border-r backdrop-blur-xl flex flex-col
       `}>
-        {/* Sidebar Header / Logo */}
+        {/* Sidebar Header / Logo - UPDATED BRANDING */}
         <div className="p-8 flex items-center justify-between">
           <div className="flex items-center gap-3 group cursor-pointer" onClick={() => navigate(user?.role === 'admin' ? '/admin' : '/student')}>
-            <div className="w-12 h-12 bg-emerald-500 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-emerald-500/20 transform group-hover:rotate-6 transition-transform">
+            <div className="w-12 h-12 bg-emerald-500 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-emerald-500/20 transform group-hover:rotate-6 transition-transform shrink-0">
               <ShieldCheck size={28} />
             </div>
-            <div className="flex flex-col">
-              <span className="font-black text-xl tracking-tighter leading-none">AI<span className="text-emerald-500">ATTEND</span></span>
+            <div className="flex flex-col overflow-hidden">
+              <span className="font-black text-base tracking-tighter leading-tight">
+                Smart Attendance <span className="text-emerald-500">System</span>
+              </span>
               <span className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-40">Precision v2.1</span>
             </div>
           </div>
@@ -80,7 +83,7 @@ export default function Layout({ user, onLogout, children, darkMode, setDarkMode
           </button>
         </div>
 
-        {/* Navigation Section */}
+        {/* Navigation */}
         <nav className="flex-1 px-6 py-4 space-y-2 overflow-y-auto">
           <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-30 mb-4 ml-4">Main Menu</p>
           {navItems.map((item) => {
@@ -111,7 +114,7 @@ export default function Layout({ user, onLogout, children, darkMode, setDarkMode
           })}
         </nav>
 
-        {/* Sidebar Footer / User Profile */}
+        {/* Sidebar Footer */}
         <div className="p-6">
           <div className={`p-4 rounded-3xl border ${darkMode ? 'bg-zinc-950/50 border-zinc-800' : 'bg-zinc-50 border-zinc-200'}`}>
             <div className="flex items-center gap-3 mb-4">
@@ -137,7 +140,7 @@ export default function Layout({ user, onLogout, children, darkMode, setDarkMode
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         
-        {/* Header */}
+        {/* Header - REMOVED SINGAPORE NODE */}
         <header className={`h-20 border-b flex items-center justify-between px-6 md:px-10 sticky top-0 z-30 transition-colors duration-300 ${
           darkMode ? 'border-zinc-800/50 bg-zinc-950/80' : 'border-zinc-200/50 bg-zinc-50/80'
         } backdrop-blur-xl`}>
@@ -152,10 +155,11 @@ export default function Layout({ user, onLogout, children, darkMode, setDarkMode
               <h2 className="font-black text-xl tracking-tighter">
                 {navItems.find(i => i.path === location.pathname)?.name || 'Command Center'}
               </h2>
-              <div className="flex items-center gap-2 opacity-40 text-[10px] font-bold uppercase tracking-widest">
+              {/* CLEANED METADATA AREA */}
+              <div className="flex items-center gap-2 opacity-40 text-[10px] font-black uppercase tracking-widest">
                 <span>Network Active</span>
                 <div className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse" />
-                <span>Singapore Node</span>
+                <span>Secure Session</span>
               </div>
             </div>
           </div>
