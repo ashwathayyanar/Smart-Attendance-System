@@ -144,7 +144,7 @@ export default function Landing({ onLogin, darkMode }: LandingProps) {
           >
             <div className="absolute inset-0 bg-blue-400 blur-3xl opacity-10 group-hover:opacity-30 transition-opacity duration-1000"></div>
             <img 
-              src="/logo.png" 
+              src="//workspaces/Smart-Attendance-System/logo.png" 
               alt="Company Logo" 
               className="relative w-28 h-28 object-contain drop-shadow-[0_20px_50px_rgba(59,130,246,0.3)] transition-all duration-700" 
             />
