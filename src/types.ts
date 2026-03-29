@@ -26,6 +26,8 @@ export interface Student {
 export interface AttendanceRecord {
   studentId: string;
   name: string;
+  className?: string; // Added optional ?
+  section?: string;   // Added optional ?
   date: string;
   time: string;
   status: 'PRESENT' | 'ABSENT';
