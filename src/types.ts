@@ -10,39 +10,25 @@ export interface User {
 }
 
 export interface Student {
-  // Database & Logic Labels
   id: string;
   studentId?: string; 
   name: string;
   fullName?: string;
-  
-  // Department Details
   className: string;
   section: string;
   mobile: string;
   parentMobile?: string;
-
-  // AI & Face Recognition Data
-  faceDescriptor?: number[] | any;
-  faceData?: any; // <--- THIS FIXES THE RED ERRORS
-  descriptors?: number[][];
-  
+  faceDescriptor?: number[]; 
+  faceData?: any; // <--- ADD THIS LINE TO FIX THE ERROR
   createdAt?: string;
 }
 
 export interface AttendanceRecord {
   studentId: string;
   name: string;
-  className?: string;
-  section?: string;
   date: string;
   time: string;
   status: 'PRESENT' | 'ABSENT';
   confidence: number;
   emotion?: string;
-}
-
-export interface AuthState {
-  user: User | null;
-  isAuthenticated: boolean;
 }
