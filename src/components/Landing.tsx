@@ -103,7 +103,7 @@ export default function Landing({ onLogin, darkMode }: LandingProps) {
               className="w-32 h-32 mb-8 relative"
             >
               <div className="absolute inset-0 bg-blue-500 blur-3xl opacity-20"></div>
-              <img src="/logo.png" alt="Company Logo" className="relative z-10 w-full h-full object-contain drop-shadow-2xl" />
+              <img src="//workspaces/Smart-Attendance-System/logo.png" alt="Company Logo" className="relative z-10 w-full h-full object-contain drop-shadow-2xl" />
             </motion.div>
             <h1 className="text-5xl font-black tracking-tighter text-center leading-[0.9]">Secure<br/><span className="text-emerald-500 italic">Onboarding</span></h1>
             <p className="opacity-40 text-xs mt-4 font-bold uppercase tracking-[0.3em]">Precision Enrollment Protocol Active</p>
