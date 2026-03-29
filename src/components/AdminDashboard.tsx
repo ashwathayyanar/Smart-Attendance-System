@@ -7,11 +7,12 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Download,
-  Trash2 // Added for Delete feature
+  Trash2,
+  Calendar,
+  Activity,
+  UserCheck
 } from 'lucide-react';
 import { 
-  BarChart, 
-  Bar, 
   XAxis, 
   YAxis, 
   CartesianGrid, 
@@ -22,6 +23,7 @@ import {
 } from 'recharts';
 import { Student, AttendanceRecord } from '../types';
 import * as XLSX from 'xlsx';
+import { motion } from 'framer-motion';
 
 export default function AdminDashboard() {
   const [students, setStudents] = useState<Student[]>([]);
@@ -49,13 +51,12 @@ export default function AdminDashboard() {
     fetchData();
   }, []);
 
-  // --- FEATURE: DELETE STUDENT LOGIC ---
+  // --- LOGIC: DELETE STUDENT ---
   const handleDeleteStudent = async (studentId: string, studentName: string) => {
     if (window.confirm(`Are you sure you want to delete ${studentName}? This will permanently remove their registration and face data.`)) {
       try {
         const res = await fetch(`/api/students/${studentId}`, { method: 'DELETE' });
         if (res.ok) {
-          // Instantly remove from the UI list
           setStudents(students.filter(s => (s.id || (s as any).studentId) !== studentId));
         } else {
           alert('Failed to delete student from database.');
@@ -66,7 +67,7 @@ export default function AdminDashboard() {
     }
   };
 
-  // --- FEATURE: CLEAR ATTENDANCE LOGIC ---
+  // --- LOGIC: CLEAR ATTENDANCE ---
   const handleResetAttendance = async () => {
     if (window.confirm('WARNING: This will clear all attendance records. Are you sure you want to start fresh for the next day?')) {
       try {
@@ -105,40 +106,34 @@ export default function AdminDashboard() {
   const totalPresentAllTime = attendance.filter(a => a.status === 'PRESENT').length;
   const avgPresent = uniqueDates.length > 0 ? totalPresentAllTime / uniqueDates.length : 0;
 
-  const presentTrendText = totalStudents === 0 ? "No data" : (presentToday >= avgPresent ? "Above average" : "Below average");
+  const presentTrendText = totalStudents === 0 ? "No data" : (presentToday >= avgPresent ? "Above avg" : "Below avg");
   const presentTrendUp = presentToday >= avgPresent;
 
-  const absentTrendText = totalStudents === 0 ? "No data" : (absentToday > 0 ? "Check notifications" : "All present");
+  const absentTrendText = totalStudents === 0 ? "No data" : (absentToday > 0 ? "Outstanding" : "Perfect");
   const absentTrendUp = absentToday === 0;
 
-  const rateTrendText = totalStudents === 0 ? "No data" : `${rateDiff >= 0 ? '+' : ''}${rateDiff}% from yesterday`;
+  const rateTrendText = totalStudents === 0 ? "No data" : `${rateDiff >= 0 ? '+' : ''}${rateDiff}% vs yesterday`;
   const rateTrendUp = rateDiff >= 0;
   
-  const studentTrendText = totalStudents === 0 ? "No data" : `+${newStudentsThisWeek} this week`;
+  const studentTrendText = totalStudents === 0 ? "No data" : `+${newStudentsThisWeek} new`;
   const studentTrendUp = newStudentsThisWeek > 0;
 
   const getWeeklyData = () => {
     const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    const data = days.map(day => ({ name: day, present: 0, absent: 0 }));
-    
+    const data = days.map(day => ({ name: day, present: 0 }));
     if (totalStudents === 0) return data;
-
     const currentDayOfWeek = todayDate.getDay() || 7; 
-    
     attendance.forEach(record => {
       const recordDate = new Date(record.date);
       const dayIndex = (recordDate.getDay() || 7) - 1; 
-      
       const diffTime = todayDate.getTime() - recordDate.getTime();
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      
       if (diffDays <= 7 && diffDays >= 0 && dayIndex <= currentDayOfWeek - 1) {
         if (record.status === 'PRESENT') {
           data[dayIndex].present += 1;
         }
       }
     });
-
     return data;
   };
 
@@ -151,44 +146,51 @@ export default function AdminDashboard() {
     XLSX.writeFile(wb, `Attendance_Report_${today}.xlsx`);
   };
 
-  if (loading) return <div className="flex items-center justify-center h-64">Loading dashboard...</div>;
+  if (loading) return (
+    <div className="flex flex-col items-center justify-center h-96 space-y-4">
+      <Activity className="text-emerald-500 animate-spin" size={40} />
+      <p className="text-sm font-bold uppercase tracking-widest opacity-40">Syncing Command Center...</p>
+    </div>
+  );
 
   return (
-    <div className="space-y-8">
-      {/* Stats Grid */}
+    <div className="max-w-7xl mx-auto space-y-8 pb-10">
+      
+      {/* 1. TOP STATS GRID */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard title="Total Students" value={totalStudents.toString()} icon={Users} color="bg-blue-500" trend={studentTrendText} trendUp={studentTrendUp} />
-        <StatCard title="Present Today" value={presentToday.toString()} icon={CheckCircle2} color="bg-emerald-500" trend={presentTrendText} trendUp={presentTrendUp} />
-        <StatCard title="Absent Today" value={absentToday.toString()} icon={XCircle} color="bg-rose-500" trend={absentTrendText} trendUp={absentTrendUp} />
-        <StatCard title="Attendance Rate" value={`${attendanceRate}%`} icon={TrendingUp} color="bg-amber-500" trend={rateTrendText} trendUp={rateTrendUp} />
+        <StatCard title="Registered" value={totalStudents.toString()} icon={Users} color="bg-blue-500" trend={studentTrendText} trendUp={studentTrendUp} />
+        <StatCard title="Present Today" value={presentToday.toString()} icon={UserCheck} color="bg-emerald-500" trend={presentTrendText} trendUp={presentTrendUp} />
+        <StatCard title="Absent" value={absentToday.toString()} icon={XCircle} color="bg-rose-500" trend={absentTrendText} trendUp={absentTrendUp} />
+        <StatCard title="Success Rate" value={`${attendanceRate}%`} icon={TrendingUp} color="bg-amber-500" trend={rateTrendText} trendUp={rateTrendUp} />
       </div>
 
+      {/* 2. BENTO CENTER SECTION */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Weekly Chart */}
-        <div className="lg:col-span-2 bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h3 className="font-bold text-lg">Weekly Overview</h3>
-              <p className="text-sm opacity-50">Attendance trends for the current week</p>
-            </div>
-            <div className="flex items-center gap-6">
-              <div className="hidden md:flex items-center gap-4 text-sm font-medium">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-emerald-500"></div>
-                  <span>Present</span>
-                </div>
+        
+        {/* Weekly Chart Card */}
+        <div className="lg:col-span-2 bg-white dark:bg-zinc-900/50 p-8 rounded-[2.5rem] border border-zinc-200 dark:border-zinc-800 shadow-xl shadow-black/5 backdrop-blur-xl">
+          <div className="flex items-center justify-between mb-8">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-500">
+                <Calendar size={24} />
               </div>
-              {/* CLEAR LOGS BUTTON */}
+              <div>
+                <h3 className="font-black text-xl tracking-tight">Weekly Overview</h3>
+                <p className="text-xs font-bold uppercase tracking-widest opacity-40">Attendance Velocity</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
               <button 
                 onClick={handleResetAttendance}
-                className="flex items-center gap-2 px-4 py-2 bg-rose-500/10 text-rose-500 rounded-xl text-xs font-bold hover:bg-rose-500 hover:text-white transition-all"
+                className="group flex items-center gap-2 px-5 py-2.5 bg-rose-500/10 text-rose-500 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-rose-500 hover:text-white transition-all active:scale-95"
               >
-                <Trash2 size={14} />
-                Clear Records
+                <Trash2 size={14} className="group-hover:rotate-12 transition-transform" />
+                Reset Logs
               </button>
             </div>
           </div>
-          <div className="h-72 w-full">
+          
+          <div className="h-[300px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={weeklyData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <defs>
@@ -197,83 +199,109 @@ export default function AdminDashboard() {
                     <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#3f3f46" opacity={0.2} />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#71717a' }} dy={10} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#71717a' }} />
-                <Tooltip contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }} />
-                <Area type="monotone" dataKey="present" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorPresent)" />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#3f3f46" opacity={0.1} />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 'bold', fill: '#71717a' }} dy={10} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 'bold', fill: '#71717a' }} />
+                <Tooltip 
+                  contentStyle={{ borderRadius: '20px', backgroundColor: '#18181b', border: 'none', color: '#fff', fontSize: '12px', fontWeight: 'bold' }}
+                  itemStyle={{ color: '#10b981' }}
+                />
+                <Area 
+                  type="monotone" 
+                  dataKey="present" 
+                  stroke="#10b981" 
+                  strokeWidth={4} 
+                  fillOpacity={1} 
+                  fill="url(#colorPresent)" 
+                  animationDuration={2000}
+                />
               </AreaChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        {/* Recent Activity */}
-        <div className="bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="font-bold text-lg">Recent Activity</h3>
-            <button onClick={exportToExcel} className="flex items-center gap-2 px-4 py-2 bg-zinc-100 dark:bg-zinc-800 rounded-xl text-sm font-medium hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-all">
-              <Download size={16} />
-              Export
+        {/* Recent Activity Feed */}
+        <div className="bg-white dark:bg-zinc-900/50 p-8 rounded-[2.5rem] border border-zinc-200 dark:border-zinc-800 shadow-xl shadow-black/5 flex flex-col backdrop-blur-xl">
+          <div className="flex items-center justify-between mb-8">
+            <h3 className="font-black text-xl tracking-tight">Activity</h3>
+            <button onClick={exportToExcel} className="p-2.5 bg-zinc-100 dark:bg-zinc-800 rounded-xl hover:text-emerald-500 transition-colors">
+              <Download size={20} />
             </button>
           </div>
-          <div className="space-y-4">
+          <div className="space-y-4 flex-1 overflow-y-auto pr-2 custom-scrollbar">
             {attendance.slice(-6).reverse().map((record, i) => (
-              <div key={i} className="flex items-center gap-4 p-3 rounded-2xl hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-all">
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white ${record.status === 'PRESENT' ? 'bg-emerald-500' : 'bg-rose-500'}`}>
-                  {record.status === 'PRESENT' ? <CheckCircle2 size={20} /> : <XCircle size={20} />}
+              <div key={i} className="group flex items-center gap-4 p-4 rounded-3xl bg-zinc-50 dark:bg-zinc-800/30 border border-transparent hover:border-emerald-500/30 transition-all">
+                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg ${record.status === 'PRESENT' ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white'}`}>
+                  {record.status === 'PRESENT' ? <CheckCircle2 size={22} /> : <XCircle size={22} />}
                 </div>
-                <div className="flex-1 overflow-hidden">
-                  <p className="text-sm font-bold truncate">{record.name}</p>
-                  <p className="text-xs opacity-50">{record.time} • {record.date}</p>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-black truncate">{record.name}</p>
+                  <p className="text-[10px] font-bold uppercase tracking-widest opacity-40">{record.time}</p>
+                </div>
+                <div className="text-right">
+                   <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                 </div>
               </div>
             ))}
-            {attendance.length === 0 && <p className="text-center opacity-50 py-12 italic text-sm">No activity yet.</p>}
+            {attendance.length === 0 && (
+              <div className="flex flex-col items-center justify-center h-full opacity-20 py-20">
+                <Activity size={48} />
+                <p className="text-xs font-bold uppercase tracking-widest mt-4">Waiting for logs...</p>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Registered Students List with DELETE ACTION */}
-      <div className="bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm overflow-hidden">
-        <h3 className="font-bold text-lg mb-6 flex items-center gap-2">
-          <Users className="text-blue-500" size={20} />
-          Registered Students
-        </h3>
+      {/* 3. PROFESSIONAL STUDENT DIRECTORY */}
+      <div className="bg-white dark:bg-zinc-900/50 rounded-[2.5rem] border border-zinc-200 dark:border-zinc-800 shadow-xl shadow-black/5 overflow-hidden backdrop-blur-xl">
+        <div className="p-8 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+             <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-500">
+                <Users size={20} />
+             </div>
+             <h3 className="font-black text-xl tracking-tight">Student Directory</h3>
+          </div>
+          <span className="px-4 py-1.5 rounded-full bg-zinc-100 dark:bg-zinc-800 text-[10px] font-black uppercase tracking-widest opacity-50">
+            {totalStudents} Identities Encrypted
+          </span>
+        </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-left">
+          <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-zinc-50 dark:bg-zinc-800/50 text-xs font-bold uppercase tracking-wider opacity-50">
-                <th className="px-6 py-4">Student ID</th>
-                <th className="px-6 py-4">Name</th>
-                <th className="px-6 py-4">Class</th>
-                <th className="px-6 py-4">Section</th>
-                <th className="px-6 py-4">Mobile</th>
-                <th className="px-6 py-4">Registration Date</th>
-                <th className="px-6 py-4 text-right">Action</th> {/* New Column */}
+              <tr className="text-[10px] font-black uppercase tracking-[0.2em] opacity-40">
+                <th className="px-8 py-6">Identity ID</th>
+                <th className="px-8 py-6">Full Name</th>
+                <th className="px-8 py-6">Department</th>
+                <th className="px-8 py-6">Mobile</th>
+                <th className="px-8 py-6 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+            <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800/50">
               {students.map((student, i) => {
                 const sId = student.id || (student as any).studentId || "";
                 const sName = student.name || (student as any).fullName || "";
                 return (
-                  <tr key={i} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-all group">
-                    <td className="px-6 py-4 font-mono text-sm">{sId}</td>
-                    <td className="px-6 py-4 font-medium">{sName}</td>
-                    <td className="px-6 py-4 text-sm opacity-70">{student.className || '-'}</td>
-                    <td className="px-6 py-4 text-sm opacity-70">{student.section || '-'}</td>
-                    <td className="px-6 py-4 text-sm opacity-70">{student.mobile}</td>
-                    <td className="px-6 py-4 text-sm opacity-70">
-                      {student.createdAt ? new Date(student.createdAt).toLocaleDateString() : 'N/A'}
+                  <tr key={i} className="hover:bg-emerald-500/[0.02] transition-colors group">
+                    <td className="px-8 py-5 font-mono text-xs font-bold text-emerald-600">{sId}</td>
+                    <td className="px-8 py-5">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-[10px] font-black">
+                          {sName.charAt(0)}
+                        </div>
+                        <span className="text-sm font-bold tracking-tight">{sName}</span>
+                      </div>
                     </td>
-                    <td className="px-6 py-4 text-right">
-                      {/* DELETE STUDENT BUTTON */}
+                    <td className="px-8 py-5">
+                      <span className="text-xs font-bold opacity-60">{student.className || '-'} • {student.section || '-'}</span>
+                    </td>
+                    <td className="px-8 py-5 text-xs font-medium opacity-50">{student.mobile}</td>
+                    <td className="px-8 py-5 text-right">
                       <button 
                         onClick={() => handleDeleteStudent(sId, sName)}
-                        className="p-2 text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
-                        title="Delete Student"
+                        className="p-2.5 text-rose-500 hover:bg-rose-500/10 rounded-xl transition-all opacity-0 group-hover:opacity-100"
                       >
-                        <Trash2 size={18} />
+                        <Trash2 size={16} />
                       </button>
                     </td>
                   </tr>
@@ -287,22 +315,23 @@ export default function AdminDashboard() {
   );
 }
 
-function StatCard({ title, value, icon: Icon, color, trend, trendUp, neutral }: any) {
+// Polished Stat Card Component
+function StatCard({ title, value, icon: Icon, color, trend, trendUp }: any) {
   return (
-    <div className="bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm hover:shadow-md transition-all group">
-      <div className="flex items-start justify-between mb-4">
-        <div className={`w-12 h-12 ${color} rounded-2xl flex items-center justify-center text-white shadow-lg`}>
-          <Icon size={24} />
+    <div className="bg-white dark:bg-zinc-900/50 p-7 rounded-[2rem] border border-zinc-200 dark:border-zinc-800 shadow-lg shadow-black/5 hover:shadow-emerald-500/5 transition-all group backdrop-blur-xl">
+      <div className="flex items-start justify-between mb-5">
+        <div className={`w-14 h-14 ${color} rounded-[1.25rem] flex items-center justify-center text-white shadow-2xl shadow-inherit transition-transform group-hover:scale-110 duration-500`}>
+          <Icon size={28} />
         </div>
         {trend !== "No data" && (
-          <div className={`flex items-center gap-1 text-xs font-bold ${neutral ? 'text-zinc-500' : (trendUp ? 'text-emerald-500' : 'text-rose-500')}`}>
-            {!neutral && (trendUp ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />)}
+          <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${trendUp ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'}`}>
+            {trendUp ? <ArrowUpRight size={12} strokeWidth={3} /> : <ArrowDownRight size={12} strokeWidth={3} />}
             {trend}
           </div>
         )}
       </div>
-      <h4 className="text-zinc-500 dark:text-zinc-400 text-sm font-medium mb-1">{title}</h4>
-      <p className="text-3xl font-bold tracking-tight">{value}</p>
+      <h4 className="text-zinc-500 dark:text-zinc-400 text-[10px] font-black uppercase tracking-[0.2em] mb-1">{title}</h4>
+      <p className="text-4xl font-black tracking-tighter leading-none">{value}</p>
     </div>
   );
 }
