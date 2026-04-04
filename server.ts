@@ -43,14 +43,10 @@ async function startServer() {
     console.log(`[SMS] Attempting alert for ID: ${studentId}`);
     
     try {
-      const numericId = parseInt(studentId);
-      
+      // Robust Search: Using studentId as a String to prevent Integer Overflow crashes
       const student = await prisma.student.findFirst({
         where: {
-          OR: [
-            { studentId: String(studentId) },
-            ...(isNaN(numericId) ? [] : [{ id: numericId }])
-          ]
+          studentId: String(studentId)
         }
       });
 
@@ -59,7 +55,7 @@ async function startServer() {
         return res.status(404).json({ error: 'Student not registered' });
       }
 
-      // Safety: Ensure mobile number exists and is a string
+      // Safety: Ensure mobile number exists and format for Fast2SMS (10 digits)
       const rawMobile = student.mobile || "";
       const phone = rawMobile.replace(/\D/g, '').slice(-10);
 
