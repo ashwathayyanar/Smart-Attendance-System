@@ -10,7 +10,8 @@ import {
   Trash2,
   Calendar,
   Activity,
-  UserCheck
+  UserCheck,
+  BellRing // Added for the alert icon
 } from 'lucide-react';
 import { 
   XAxis, 
@@ -50,6 +51,29 @@ export default function AdminDashboard() {
   useEffect(() => {
     fetchData();
   }, []);
+
+  // --- LOGIC: MANUAL SMS ALERT ---
+  const triggerAlert = async (id: string, name: string) => {
+    const confirm = window.confirm(`Send urgent Security Alert SMS to ${name}?`);
+    if (!confirm) return;
+
+    try {
+      const res = await fetch('/api/manual-sms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ studentId: id })
+      });
+
+      if (res.ok) {
+        alert(`✅ Alert successfully dispatched to ${name}.`);
+      } else {
+        alert('❌ Failed to reach SMS Gateway. Check API logs.');
+      }
+    } catch (error) {
+      console.error("SMS Error:", error);
+      alert('⚠️ Critical system error while sending SMS.');
+    }
+  };
 
   // --- LOGIC: DELETE STUDENT ---
   const handleDeleteStudent = async (studentId: string, studentName: string) => {
@@ -166,7 +190,6 @@ export default function AdminDashboard() {
 
       {/* 2. BENTO CENTER SECTION */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        
         {/* Weekly Chart Card */}
         <div className="lg:col-span-2 bg-white dark:bg-zinc-900/50 p-8 rounded-[2.5rem] border border-zinc-200 dark:border-zinc-800 shadow-xl shadow-black/5 backdrop-blur-xl">
           <div className="flex items-center justify-between mb-8">
@@ -296,10 +319,25 @@ export default function AdminDashboard() {
                       <span className="text-xs font-bold opacity-60">{student.className || '-'} • {student.section || '-'}</span>
                     </td>
                     <td className="px-8 py-5 text-xs font-medium opacity-50">{student.mobile}</td>
-                    <td className="px-8 py-5 text-right">
+                    <td className="px-8 py-5 text-right flex items-center justify-end gap-2">
+                      {/* --- NEW: MANUAL SMS ALERT BUTTON --- */}
+                      <button
+                        onClick={() => triggerAlert(sId, sName)}
+                        className="relative group p-2.5 bg-orange-500/10 text-orange-600 hover:bg-orange-600 hover:text-white rounded-xl transition-all"
+                        title="Send Absent SMS"
+                      >
+                         <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-3 w-3 bg-orange-500"></span>
+                         </span>
+                         <BellRing size={16} />
+                      </button>
+
+                      {/* DELETE BUTTON */}
                       <button 
                         onClick={() => handleDeleteStudent(sId, sName)}
                         className="p-2.5 text-rose-500 hover:bg-rose-500/10 rounded-xl transition-all opacity-0 group-hover:opacity-100"
+                        title="Delete Student"
                       >
                         <Trash2 size={16} />
                       </button>
