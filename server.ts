@@ -3,35 +3,27 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
-import pg from 'pg'; // Added for the connection pool
+import pg from 'pg'; 
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // --- 1. SMART DATABASE INITIALIZATION ---
-
-// Get the URL from Vercel's environment
 let dbUrl = process.env.DATABASE_URL || "";
 
-// Automatically attach the SSL fix if it's missing (bypasses Vercel lock)
 if (dbUrl && !dbUrl.includes('sslmode=')) {
   const separator = dbUrl.includes('?') ? '&' : '?';
   dbUrl += `${separator}sslmode=verify-full`;
 }
-// Initialize the connection pool and Prisma 7 adapter
+
 const pool = new pg.Pool({ connectionString: dbUrl });
-
-// We use 'as any' here to bypass a minor TypeScript version mismatch 
-// between the 'pg' library and the Prisma adapter.
 const adapter = new PrismaPg(pool as any); 
-
 const prisma = new PrismaClient({ adapter });
 
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
 
-  // Allow large payloads for Base64 face data images
   app.use(express.json({ limit: '50mb' }));
 
   app.use((req, res, next) => {
@@ -41,16 +33,55 @@ async function startServer() {
 
   // --- 2. API ROUTES ---
 
-  // GET all students (Formatted for AI Face Matching)
+  // MANUAL SMS ALERT ROUTE
+  app.post('/api/manual-sms', async (req, res) => {
+    const { studentId } = req.body;
+    
+    try {
+      // FIX 1: Check if studentId is a valid number before searching the 'id' field
+      const numericId = parseInt(studentId);
+      
+      const student = await prisma.student.findFirst({
+        where: {
+          OR: [
+            { studentId: String(studentId) },
+            // Only search 'id' if the input was actually a number to avoid the Type Error
+            ...(isNaN(numericId) ? [] : [{ id: numericId }])
+          ]
+        }
+      });
+
+      if (!student) {
+        return res.status(404).json({ error: 'Student not registered' });
+      }
+
+      const phone = student.mobile.replace(/\D/g, '').slice(-10);
+      const message = `URGENT: Student ${student.fullName} (ID: ${student.studentId}) was ABSENT today. Inform CC immediately.`;
+      
+      const smsUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${process.env.SMS_API_KEY}&route=q&message=${encodeURIComponent(message)}&numbers=${phone}`;
+      
+      const smsResponse = await fetch(smsUrl);
+      const smsResult = await smsResponse.json();
+
+      if (smsResult.return === true) {
+        res.json({ success: true, message: 'Alert dispatched' });
+      } else {
+        res.status(500).json({ error: 'Gateway failed' });
+      }
+    } catch (error) {
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // GET all students
   app.get('/api/students', async (req, res) => {
     try {
       const students = await prisma.student.findMany();
-      
       const frontendReadyStudents = students.map(student => {
-        let numericDescriptors = [];
+        // FIX 2: Explicitly type this as a number array to remove the 'any[]' error
+        let numericDescriptors: number[] = []; 
         
         try {
-          // Convert the text data from the database back into numbers for the AI
           const parsed = JSON.parse(student.faceData);
           if (Array.isArray(parsed)) {
             numericDescriptors = parsed.map(Number);
@@ -58,138 +89,97 @@ async function startServer() {
             numericDescriptors = Array.from(parsed.descriptors[0]).map(Number);
           }
         } catch (e) {
-          console.error("Could not parse face data for student:", student.studentId);
+          console.error("Parse error for:", student.studentId);
         }
-
         return {
           ...student,
           id: student.studentId,
           name: student.fullName,
-          // We provide the data in every format the AI library might look for
           descriptors: numericDescriptors.length > 0 ? [numericDescriptors] : [],
           faceDescriptor: numericDescriptors,
           faceData: numericDescriptors
         };
       });
-
       res.json(frontendReadyStudents);
     } catch (error) {
-      console.error("Error reading students:", error);
       res.status(500).json({ error: 'Failed to read students' });
     }
   });
 
-  // POST a new student (Registration)
+  // POST a new student
   app.post('/api/students', async (req, res) => {
-    console.log("Received POST /api/students. Frontend sent:", req.body); 
     try {
-      const studentId = req.body.studentId || req.body.id || req.body.student_id;
-      const fullName = req.body.fullName || req.body.name || req.body.studentName;
-      const className = req.body.class || req.body.className || req.body.course || "N/A";
-      const section = req.body.section || "N/A";
-      const mobile = req.body.mobile || req.body.phone || "N/A";
-      const faceData = req.body.faceData || req.body.image || req.body.photo || req.body.faceDescriptor;
-
-      if (!studentId || !fullName || !faceData) {
-        return res.status(400).json({ error: 'Missing critical data!' });
-      }
-
+      const { studentId, fullName, className, section, mobile, faceData } = req.body;
       const newStudent = await prisma.student.create({
         data: {
-          studentId: String(studentId),
-          fullName: String(fullName),
-          className: String(className),
-          section: String(section),
-          mobile: String(mobile),
+          studentId: String(studentId || req.body.id),
+          fullName: String(fullName || req.body.name),
+          className: String(className || "N/A"),
+          section: String(section || "N/A"),
+          mobile: String(mobile || "N/A"),
           faceData: String(faceData) 
         }
       });
-
       res.json(newStudent);
     } catch (error) {
-      console.error("Error saving student:", error);
       res.status(500).json({ error: 'Failed to save student' });
     }
   });
 
-  // GET all attendance records
+  // GET all attendance
   app.get('/api/attendance', async (req, res) => {
     try {
-      const records = await prisma.attendance.findMany({
-        orderBy: { createdAt: 'desc' }
-      });
+      const records = await prisma.attendance.findMany({ orderBy: { createdAt: 'desc' } });
       res.json(records);
     } catch (error) {
-      console.error("Error reading attendance:", error);
       res.status(500).json({ error: 'Failed to read attendance' });
     }
   });
 
-  // POST a new attendance record (Capture)
+  // POST a new attendance
   app.post('/api/attendance', async (req, res) => {
-    console.log("ATTENDANCE DEBUG - Full Request Body:", JSON.stringify(req.body, null, 2));
     try {
-      const studentId = String(req.body.studentId || req.body.id || req.body.uid || "");
-      const name = String(req.body.name || req.body.fullName || req.body.studentName || req.body.label || "Unknown Student");
-      
+      const { studentId, name, date, time, status } = req.body;
       const now = new Date();
-      const date = req.body.date || now.toISOString().split('T')[0];
-      const time = req.body.time || now.toTimeString().split(' ')[0];
-      const status = req.body.status || "Present";
-
-      if (!studentId) {
-        return res.status(400).json({ error: 'No Student ID found in request' });
-      }
-
+      const attendanceDate = date || now.toISOString().split('T')[0];
+      
       const existingRecord = await prisma.attendance.findFirst({
-        where: { studentId: String(studentId), date: date }
+        where: { studentId: String(studentId), date: attendanceDate }
       });
       
       if (!existingRecord) {
         const newRecord = await prisma.attendance.create({
-          data: { studentId: String(studentId), name: String(name), date, time, status }
+          data: { 
+            studentId: String(studentId), 
+            name: String(name), 
+            date: attendanceDate, 
+            time: time || now.toTimeString().split(' ')[0], 
+            status: status || "Present" 
+          }
         });
-        console.log(`✅ Success: Attendance marked for ${name}`);
         res.json(newRecord);
       } else {
         res.json(existingRecord); 
       }
     } catch (error) {
-      console.error("❌ ATTENDANCE ERROR:", error);
       res.status(500).json({ error: 'Failed to save attendance' });
     }
   });
 
-  // DELETE all attendance records (Wipe for next day)
-app.delete('/api/attendance', async (req, res) => {
-  try {
+  // DELETE routes
+  app.delete('/api/attendance', async (req, res) => {
     await prisma.attendance.deleteMany();
-    res.json({ message: 'Attendance logs cleared successfully' });
-  } catch (error) {
-    console.error("Error clearing attendance:", error);
-    res.status(500).json({ error: 'Failed to clear attendance' });
-  }
-});
+    res.json({ message: 'Cleared' });
+  });
 
-// DELETE a specific student by ID
-app.delete('/api/students/:id', async (req, res) => {
-  const { id } = req.params;
-  try {
-    // This will remove the student from the Singapore database
-    await prisma.student.delete({
-      where: { studentId: id }
-    });
-    res.json({ message: 'Student deleted successfully' });
-  } catch (error) {
-    console.error("Error deleting student:", error);
-    res.status(500).json({ error: 'Failed to delete student' });
-  }
-});
+  app.delete('/api/students/:id', async (req, res) => {
+    await prisma.student.delete({ where: { studentId: req.params.id } });
+    res.json({ message: 'Deleted' });
+  });
 
-  // --- 3. FRONTEND SERVING / VITE ---
+  // --- 3. FRONTEND SERVING ---
   if (process.env.NODE_ENV !== 'production') {
-    const vitePkg = 'vite';
-    const vite = await import(vitePkg);
+    const vite = await import('vite');
     const viteServer = await vite.createServer({
       server: { middlewareMode: true },
       appType: 'spa',
@@ -198,13 +188,11 @@ app.delete('/api/students/:id', async (req, res) => {
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
+    app.get('*', (req, res) => res.sendFile(path.join(distPath, 'index.html')));
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on port ${PORT}`);
+    console.log(`🚀 Smart System Online on port ${PORT}`);
   });
 }
 

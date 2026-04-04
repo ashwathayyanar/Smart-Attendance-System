@@ -1,4 +1,3 @@
-// api/manual-sms.ts
 import { PrismaClient } from '@prisma/client';
 import { sendManualAlert } from '../src/services/smsService';
 
@@ -9,7 +8,7 @@ export default async function handler(req: any, res: any) {
   const { studentId } = req.body;
 
   try {
-    // Try to find by 'id' OR 'studentId' just in case
+    // 1. REGISTRATION CHECK (The Gatekeeper)
     const student = await prisma.student.findFirst({
       where: {
         OR: [
@@ -19,17 +18,22 @@ export default async function handler(req: any, res: any) {
       }
     });
 
+    // If student is NOT in your database, STOP HERE.
     if (!student) {
-      console.error("DEBUG: Student not found for ID:", studentId);
-      return res.status(404).json({ message: 'Student not found in DB' });
+      console.log(`🚫 Security Block: ID ${studentId} is not a registered student.`);
+      return res.status(404).json({ message: 'Student not registered in the system.' });
     }
 
+    // 2. Only if registered, we proceed to SMS
+    console.log(`✅ Student Found: ${student.fullName}. Calling SMS Gateway...`);
     const success = await sendManualAlert(student);
-    if (success) return res.status(200).json({ message: 'Sent' });
-    
-    return res.status(500).json({ message: 'Gateway logic failed' });
+
+    if (success) {
+      return res.status(200).json({ message: 'Alert Dispatched' });
+    } else {
+      return res.status(500).json({ message: 'SMS Gateway Error (Check Balance)' });
+    }
   } catch (err) {
-    console.error("CRITICAL ERROR:", err);
-    return res.status(500).json({ message: 'Server crash' });
+    return res.status(500).json({ message: 'Internal Server Error' });
   }
 }
