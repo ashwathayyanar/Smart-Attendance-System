@@ -26,6 +26,7 @@ async function startServer() {
 
   app.use(express.json({ limit: '50mb' }));
 
+  // Request Logger
   app.use((req, res, next) => {
     console.log(`[${req.method}] ${req.url}`);
     next();
@@ -33,29 +34,40 @@ async function startServer() {
 
   // --- 2. API ROUTES ---
 
-  // MANUAL SMS ALERT ROUTE
+  /**
+   * MANUAL SMS ALERT ROUTE
+   * Triggered by the Admin Dashboard Bell Icon
+   */
   app.post('/api/manual-sms', async (req, res) => {
     const { studentId } = req.body;
+    console.log(`[SMS] Attempting alert for ID: ${studentId}`);
     
     try {
-      // FIX 1: Check if studentId is a valid number before searching the 'id' field
       const numericId = parseInt(studentId);
       
       const student = await prisma.student.findFirst({
         where: {
           OR: [
             { studentId: String(studentId) },
-            // Only search 'id' if the input was actually a number to avoid the Type Error
             ...(isNaN(numericId) ? [] : [{ id: numericId }])
           ]
         }
       });
 
       if (!student) {
+        console.error(`[SMS] Blocked: ID ${studentId} not found in database.`);
         return res.status(404).json({ error: 'Student not registered' });
       }
 
-      const phone = student.mobile.replace(/\D/g, '').slice(-10);
+      // Safety: Ensure mobile number exists and is a string
+      const rawMobile = student.mobile || "";
+      const phone = rawMobile.replace(/\D/g, '').slice(-10);
+
+      if (phone.length !== 10) {
+        console.error(`[SMS] Blocked: Invalid mobile format for ${student.fullName}`);
+        return res.status(400).json({ error: 'Invalid mobile number' });
+      }
+
       const message = `URGENT: Student ${student.fullName} (ID: ${student.studentId}) was ABSENT today. Inform CC immediately.`;
       
       const smsUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${process.env.SMS_API_KEY}&route=q&message=${encodeURIComponent(message)}&numbers=${phone}`;
@@ -64,11 +76,15 @@ async function startServer() {
       const smsResult = await smsResponse.json();
 
       if (smsResult.return === true) {
+        console.log(`✅ [SMS] Success: Message delivered to ${student.fullName}`);
         res.json({ success: true, message: 'Alert dispatched' });
       } else {
-        res.status(500).json({ error: 'Gateway failed' });
+        console.error("[SMS] Gateway Refused:", smsResult);
+        res.status(500).json({ error: 'Gateway failed', details: smsResult });
       }
-    } catch (error) {
+    } catch (error: any) {
+      console.error("--- CRITICAL SMS ROUTE ERROR ---");
+      console.error(error.message);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -78,9 +94,7 @@ async function startServer() {
     try {
       const students = await prisma.student.findMany();
       const frontendReadyStudents = students.map(student => {
-        // FIX 2: Explicitly type this as a number array to remove the 'any[]' error
         let numericDescriptors: number[] = []; 
-        
         try {
           const parsed = JSON.parse(student.faceData);
           if (Array.isArray(parsed)) {
@@ -136,7 +150,7 @@ async function startServer() {
     }
   });
 
-  // POST a new attendance
+  // POST a new attendance record
   app.post('/api/attendance', async (req, res) => {
     try {
       const { studentId, name, date, time, status } = req.body;
@@ -168,13 +182,21 @@ async function startServer() {
 
   // DELETE routes
   app.delete('/api/attendance', async (req, res) => {
-    await prisma.attendance.deleteMany();
-    res.json({ message: 'Cleared' });
+    try {
+      await prisma.attendance.deleteMany();
+      res.json({ message: 'Cleared' });
+    } catch (e) {
+      res.status(500).json({ error: 'Failed' });
+    }
   });
 
   app.delete('/api/students/:id', async (req, res) => {
-    await prisma.student.delete({ where: { studentId: req.params.id } });
-    res.json({ message: 'Deleted' });
+    try {
+      await prisma.student.delete({ where: { studentId: req.params.id } });
+      res.json({ message: 'Deleted' });
+    } catch (e) {
+      res.status(500).json({ error: 'Failed' });
+    }
   });
 
   // --- 3. FRONTEND SERVING ---
