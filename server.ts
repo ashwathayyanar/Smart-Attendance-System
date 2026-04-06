@@ -89,10 +89,11 @@ async function startServer() {
 
   /**
    * AUTOMATION: DAILY 10:00 AM SWEEP
+   * Triggers automated SMS for absentees (Mon-Fri)
    */
   app.get('/api/automation/daily-check', async (req, res) => {
     const now = new Date();
-    const dayOfWeek = now.getDay();
+    const dayOfWeek = now.getDay(); // 0 is Sunday, 6 is Saturday
 
     if (dayOfWeek === 0 || dayOfWeek === 6) {
       console.log("🛑 Weekend detected. Automation standby.");
@@ -104,6 +105,7 @@ async function startServer() {
     try {
       const today = now.toISOString().split('T')[0];
 
+      // 1. Fetch All Students and Daily Attendance
       const [allStudents, presentToday] = await Promise.all([
         prisma.student.findMany(),
         prisma.attendance.findMany({ where: { date: today, status: 'Present' } })
@@ -112,6 +114,7 @@ async function startServer() {
       const presentIds = presentToday.map(p => p.studentId);
       const absentees = allStudents.filter(s => !presentIds.includes(s.studentId));
 
+      // 2. Dispatch Alerts
       for (const student of absentees) {
         const phone = (student.mobile || "").replace(/\D/g, '').slice(-10);
         
@@ -132,6 +135,26 @@ async function startServer() {
     } catch (error) {
       console.error("Critical Automation Error:", error);
       res.status(500).json({ error: "System failure during daily sweep." });
+    }
+  });
+
+  /**
+   * AUTOMATION: DAILY 5:00 PM RESET
+   * Clears attendance logs to prepare for the next morning (Mon-Fri)
+   */
+  app.get('/api/automation/reset-logs', async (req, res) => {
+    const dayOfWeek = new Date().getDay();
+
+    if (dayOfWeek === 0 || dayOfWeek === 6) {
+      return res.json({ message: "Weekend skip: Reset not required." });
+    }
+
+    try {
+      await prisma.attendance.deleteMany();
+      console.log("🧹 5:00 PM Reset: Attendance manifest cleared.");
+      res.json({ success: true, message: "Database reset for next day cycle." });
+    } catch (error) {
+      res.status(500).json({ error: "Cleanup failure" });
     }
   });
 
