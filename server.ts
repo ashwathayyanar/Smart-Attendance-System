@@ -34,62 +34,57 @@ async function startServer() {
 
   // --- 2. API ROUTES ---
 
-  /**
-   * MASTER AUTOMATION CRON
-   * Triggers both 10AM Alerts and 5PM Resets via a single Vercel Cron entry.
-   */
-  app.get('/api/automation/master-cron', async (req, res) => {
-    const now = new Date();
-    const dayOfWeek = now.getDay();
-    const hourUTC = now.getUTCHours(); // Vercel is UTC
-    
-    // Weekend Protection
-    if (dayOfWeek === 0 || dayOfWeek === 6) {
-      return res.json({ message: "Weekend skip: System idle." });
-    }
+ /**
+ * DAILY MAINTENANCE CRON (Runs once at 10:00 AM IST)
+ * 1. Clears old logs from previous days.
+ * 2. Dispatches SMS for today's absentees.
+ */
+app.get('/api/automation/daily-maintenance', async (req, res) => {
+  const now = new Date();
+  const today = now.toISOString().split('T')[0];
+  const dayOfWeek = now.getDay();
 
-    try {
-      /**
-       * TASK A: 10:00 AM IST (04:30 UTC) -> SMS ALERTS
-       */
-      if (hourUTC === 4) {
-        console.log("🚀 [MASTER] 10:00 AM: Dispatching Absentee Alerts...");
-        const today = now.toISOString().split('T')[0];
-        
-        const [allStudents, presentToday] = await Promise.all([
-          prisma.student.findMany(),
-          prisma.attendance.findMany({ where: { date: today, status: 'Present' } })
-        ]);
+  // Weekend Protection
+  if (dayOfWeek === 0 || dayOfWeek === 6) return res.json({ message: "Weekend skip" });
 
-        const presentIds = presentToday.map(p => p.studentId);
-        const absentees = allStudents.filter(s => !presentIds.includes(s.studentId));
-
-        for (const student of absentees) {
-          const phone = (student.mobile || "").replace(/\D/g, '').slice(-10);
-          if (phone.length === 10) {
-            const message = `Attendance Alert: Dear Parents, Student ${student.fullName} (ID: ${student.studentId}) was recorded ABSENT today.`;
-            const smsUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${process.env.SMS_API_KEY}&route=q&message=${encodeURIComponent(message)}&numbers=${phone}`;
-            await fetch(smsUrl);
-          }
-        }
-        return res.json({ task: "SMS Alerts", notified: absentees.length });
+  try {
+    console.log("🧹 Step 1: Purging logs from previous days...");
+    // Delete any attendance record where the date is NOT today
+    const deleted = await prisma.attendance.deleteMany({
+      where: {
+        date: { not: today }
       }
+    });
 
-      /**
-       * TASK B: 5:00 PM IST (11:30 UTC) -> RESET LOGS
-       */
-      if (hourUTC === 19) { // This matches the current time (approx 7 PM UTC / 12:30 AM IST)
-  console.log("🧹 [MASTER] TESTING RESET NOW...");
-  await prisma.attendance.deleteMany();
-  return res.json({ task: "TEST RESET", success: true });
-}
+    console.log(`🚀 Step 2: Processing 10 AM Absentee Sweep for ${today}...`);
+    const [allStudents, presentToday] = await Promise.all([
+      prisma.student.findMany(),
+      prisma.attendance.findMany({ where: { date: today, status: 'Present' } })
+    ]);
 
-      res.json({ message: "Master Cron triggered. No task assigned for this hour.", hourUTC });
-    } catch (error) {
-      console.error("Master Cron Error:", error);
-      res.status(500).json({ error: "Automation engine failure" });
+    const presentIds = presentToday.map(p => p.studentId);
+    const absentees = allStudents.filter(s => !presentIds.includes(s.studentId));
+
+    for (const student of absentees) {
+      const phone = (student.mobile || "").replace(/\D/g, '').slice(-10);
+      if (phone.length === 10) {
+        const message = `Attendance Alert: Dear Parents, Student ${student.fullName} (ID: ${student.studentId}) was recorded ABSENT today.`;
+        const smsUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${process.env.SMS_API_KEY}&route=q&message=${encodeURIComponent(message)}&numbers=${phone}`;
+        await fetch(smsUrl);
+      }
     }
-  });
+
+    res.json({ 
+      success: true, 
+      oldLogsPurged: deleted.count,
+      smsSent: absentees.length 
+    });
+
+  } catch (error) {
+    console.error("Maintenance Error:", error);
+    res.status(500).json({ error: "Daily maintenance failed" });
+  }
+});
 
   /**
    * MANUAL SMS ALERT ROUTE
