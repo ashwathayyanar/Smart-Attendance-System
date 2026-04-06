@@ -36,13 +36,14 @@ async function startServer() {
 
   /**
    * MANUAL SMS ALERT ROUTE
-   * Triggered by the Admin Dashboard Bell Icon
+   * Switched back to 'route=q' for standard text messaging
    */
   app.post('/api/manual-sms', async (req, res) => {
     const { studentId } = req.body;
     console.log(`[SMS] Attempting alert for ID: ${studentId}`);
     
     try {
+      // Find the student in the database
       const student = await prisma.student.findFirst({
         where: {
           studentId: String(studentId)
@@ -50,36 +51,36 @@ async function startServer() {
       });
 
       if (!student) {
-        console.error(`[SMS] Blocked: ID ${studentId} not found in database.`);
+        console.error(`[SMS] Blocked: ID ${studentId} not found.`);
         return res.status(404).json({ error: 'Student not registered' });
       }
 
+      // Safety: Format for Fast2SMS (10 digits)
       const rawMobile = student.mobile || "";
       const phone = rawMobile.replace(/\D/g, '').slice(-10);
 
       if (phone.length !== 10) {
-        console.error(`[SMS] Blocked: Invalid mobile format for ${student.fullName}`);
         return res.status(400).json({ error: 'Invalid mobile number' });
       }
 
-      // --- CRITICAL FIX FOR OTP ROUTE ---
-      // The OTP route expects a 'variable' usually under 30 characters.
-      // If the message is too long, delivery fails silently.
-      const shortAlert = `ABSENT: ${student.fullName}`; 
+      // Quick SMS (route=q) allows full descriptive messages
+      const message = `URGENT: Student ${student.fullName} (ID: ${student.studentId}) was ABSENT today. Inform CC immediately.`;
       
-      const smsUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${process.env.SMS_API_KEY}&route=otp&variables_values=${encodeURIComponent(shortAlert)}&numbers=${phone}`;      
+      // Using 'route=q' and 'message' parameter instead of variables_values
+      const smsUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${process.env.SMS_API_KEY}&route=q&message=${encodeURIComponent(message)}&numbers=${phone}`;      
       
-      console.log(`[SMS] Dispatching OTP Route to: ${phone}`);
+      console.log(`[SMS] Dispatching Quick SMS to: ${phone}`);
 
       const smsResponse = await fetch(smsUrl);
       const smsResult = await smsResponse.json();
 
       if (smsResult.return === true) {
-        console.log(`✅ [SMS] Success: Message delivered to ${student.fullName}`);
+        console.log(`✅ [SMS] Success: Request accepted for ${student.fullName}`);
         res.json({ success: true, message: 'Alert dispatched' });
       } else {
         console.error("[SMS] Gateway Refused:", smsResult);
-        res.status(500).json({ error: 'Gateway failed', details: smsResult });
+        // We send the specific gateway error back to the frontend so you can see it
+        res.status(500).json({ error: 'Gateway failed', details: smsResult.message || 'Check balance/route' });
       }
     } catch (error: any) {
       console.error("--- CRITICAL SMS ROUTE ERROR ---");
