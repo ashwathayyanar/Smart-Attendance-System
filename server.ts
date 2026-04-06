@@ -43,7 +43,6 @@ async function startServer() {
     console.log(`[SMS] Attempting alert for ID: ${studentId}`);
     
     try {
-      // Robust Search: Using studentId as a String to prevent Integer Overflow crashes
       const student = await prisma.student.findFirst({
         where: {
           studentId: String(studentId)
@@ -55,7 +54,6 @@ async function startServer() {
         return res.status(404).json({ error: 'Student not registered' });
       }
 
-      // Safety: Ensure mobile number exists and format for Fast2SMS (10 digits)
       const rawMobile = student.mobile || "";
       const phone = rawMobile.replace(/\D/g, '').slice(-10);
 
@@ -64,10 +62,15 @@ async function startServer() {
         return res.status(400).json({ error: 'Invalid mobile number' });
       }
 
-      const message = `URGENT: Student ${student.fullName} (ID: ${student.studentId}) was ABSENT today. Inform CC immediately.`;
+      // --- CRITICAL FIX FOR OTP ROUTE ---
+      // The OTP route expects a 'variable' usually under 30 characters.
+      // If the message is too long, delivery fails silently.
+      const shortAlert = `ABSENT: ${student.fullName}`; 
       
-      // Find the smsUrl line and change 'route=q' to 'route=otp'
-      const smsUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${process.env.SMS_API_KEY}&route=otp&variables_values=${encodeURIComponent(message)}&numbers=${phone}`;      
+      const smsUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${process.env.SMS_API_KEY}&route=otp&variables_values=${encodeURIComponent(shortAlert)}&numbers=${phone}`;      
+      
+      console.log(`[SMS] Dispatching OTP Route to: ${phone}`);
+
       const smsResponse = await fetch(smsUrl);
       const smsResult = await smsResponse.json();
 
