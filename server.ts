@@ -66,8 +66,8 @@ async function startServer() {
 
       const message = `URGENT: Student ${student.fullName} (ID: ${student.studentId}) was ABSENT today. Inform CC immediately.`;
       
-      const smsUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${process.env.SMS_API_KEY}&route=q&message=${encodeURIComponent(message)}&numbers=${phone}`;
-      
+      // Find the smsUrl line and change 'route=q' to 'route=otp'
+      const smsUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${process.env.SMS_API_KEY}&route=otp&variables_values=${encodeURIComponent(message)}&numbers=${phone}`;      
       const smsResponse = await fetch(smsUrl);
       const smsResult = await smsResponse.json();
 
