@@ -164,7 +164,7 @@ export default function AttendanceLogs() {
                     <div className="flex flex-col space-y-1">
                       <div className="flex items-center gap-2 text-xs font-bold text-zinc-600 dark:text-zinc-300">
                         <Calendar size={12} className="opacity-40" />
-                        {format(new Date(log.date), 'MMM dd, yyyy')}
+                        {log.date ? format(new Date(log.date), 'MMM dd, yyyy') : 'N/A'}
                       </div>
                       <div className="flex items-center gap-2 text-[10px] font-bold opacity-30 uppercase">
                         <Clock size={12} />

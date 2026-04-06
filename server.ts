@@ -66,7 +66,6 @@ async function startServer() {
       // Quick SMS (route=q) allows full descriptive messages
       const message = `Attendance Alert :Dear Parents Student ${student.fullName} (ID: ${student.studentId}) was recorded ABSENT today.`;
       
-      // Using 'route=q' and 'message' parameter instead of variables_values
       const smsUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${process.env.SMS_API_KEY}&route=q&message=${encodeURIComponent(message)}&numbers=${phone}`;      
       
       console.log(`[SMS] Dispatching Quick SMS to: ${phone}`);
@@ -79,7 +78,6 @@ async function startServer() {
         res.json({ success: true, message: 'Alert dispatched' });
       } else {
         console.error("[SMS] Gateway Refused:", smsResult);
-        // We send the specific gateway error back to the frontend so you can see it
         res.status(500).json({ error: 'Gateway failed', details: smsResult.message || 'Check balance/route' });
       }
     } catch (error: any) {
@@ -88,56 +86,55 @@ async function startServer() {
       res.status(500).json({ error: 'Internal server error' });
     }
   });
+
+  /**
+   * AUTOMATION: DAILY 10:00 AM SWEEP
+   */
   app.get('/api/automation/daily-check', async (req, res) => {
-  const now = new Date();
-  const dayOfWeek = now.getDay(); // 0 is Sunday, 6 is Saturday
+    const now = new Date();
+    const dayOfWeek = now.getDay();
 
-  // Lock 2: Manual Weekend Skip
-  if (dayOfWeek === 0 || dayOfWeek === 6) {
-    console.log("🛑 Weekend detected. Automation standby.");
-    return res.json({ message: "System idle: Weekends excluded." });
-  }
-
-  console.log("🚀 Weekday detected. Starting 10:00 AM Absentee Sweep...");
-
-  try {
-    const today = now.toISOString().split('T')[0];
-
-    // 1. Fetch All Students and Daily Attendance
-    const [allStudents, presentToday] = await Promise.all([
-      prisma.student.findMany(),
-      prisma.attendance.findMany({ where: { date: today, status: 'Present' } })
-    ]);
-
-    const presentIds = presentToday.map(p => p.studentId);
-    const absentees = allStudents.filter(s => !presentIds.includes(s.studentId));
-
-    // 2. Dispatch Alerts
-    for (const student of absentees) {
-      const phone = (student.mobile || "").replace(/\D/g, '').slice(-10);
-      
-      if (phone.length === 10) {
-        // Professional SMS Body
-        const message = `ATTENDANCE ALERT: Dear Parents ${student.fullName} (ID:${student.studentId}) is recorded ABSENT today.`;
-        
-        const smsUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${process.env.SMS_API_KEY}&route=q&message=${encodeURIComponent(message)}&numbers=${phone}`;
-        
-        await fetch(smsUrl);
-        console.log(`✅ Automated alert sent: ${student.fullName}`);
-      }
+    if (dayOfWeek === 0 || dayOfWeek === 6) {
+      console.log("🛑 Weekend detected. Automation standby.");
+      return res.json({ message: "System idle: Weekends excluded." });
     }
 
-    res.json({ 
-      status: "Success", 
-      absenteesNotified: absentees.length,
-      timestamp: now.toLocaleString() 
-    });
+    console.log("🚀 Weekday detected. Starting 10:00 AM Absentee Sweep...");
 
-  } catch (error) {
-    console.error("Critical Automation Error:", error);
-    res.status(500).json({ error: "System failure during daily sweep." });
-  }
-});
+    try {
+      const today = now.toISOString().split('T')[0];
+
+      const [allStudents, presentToday] = await Promise.all([
+        prisma.student.findMany(),
+        prisma.attendance.findMany({ where: { date: today, status: 'Present' } })
+      ]);
+
+      const presentIds = presentToday.map(p => p.studentId);
+      const absentees = allStudents.filter(s => !presentIds.includes(s.studentId));
+
+      for (const student of absentees) {
+        const phone = (student.mobile || "").replace(/\D/g, '').slice(-10);
+        
+        if (phone.length === 10) {
+          const message = `ATTENDANCE ALERT: Dear Parents ${student.fullName} (ID:${student.studentId}) is recorded ABSENT today.`;
+          const smsUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${process.env.SMS_API_KEY}&route=q&message=${encodeURIComponent(message)}&numbers=${phone}`;
+          await fetch(smsUrl);
+          console.log(`✅ Automated alert sent: ${student.fullName}`);
+        }
+      }
+
+      res.json({ 
+        status: "Success", 
+        absenteesNotified: absentees.length,
+        timestamp: now.toLocaleString() 
+      });
+
+    } catch (error) {
+      console.error("Critical Automation Error:", error);
+      res.status(500).json({ error: "System failure during daily sweep." });
+    }
+  });
+
   // GET all students
   app.get('/api/students', async (req, res) => {
     try {
@@ -189,11 +186,27 @@ async function startServer() {
     }
   });
 
-  // GET all attendance
+  /**
+   * SMART GET: ENRICHED ATTENDANCE
+   * Now attaches Class and Section to every log record
+   */
   app.get('/api/attendance', async (req, res) => {
     try {
-      const records = await prisma.attendance.findMany({ orderBy: { createdAt: 'desc' } });
-      res.json(records);
+      const [records, students] = await Promise.all([
+        prisma.attendance.findMany({ orderBy: { createdAt: 'desc' } }),
+        prisma.student.findMany()
+      ]);
+
+      const enrichedRecords = records.map(record => {
+        const studentData = students.find(s => s.studentId === record.studentId);
+        return {
+          ...record,
+          className: studentData?.className || "N/A",
+          section: studentData?.section || "-"
+        };
+      });
+
+      res.json(enrichedRecords);
     } catch (error) {
       res.status(500).json({ error: 'Failed to read attendance' });
     }
@@ -202,7 +215,7 @@ async function startServer() {
   // POST a new attendance record
   app.post('/api/attendance', async (req, res) => {
     try {
-      const { studentId, name, date, time, status } = req.body;
+      const { studentId, name, date, time, status, emotion, confidence } = req.body;
       const now = new Date();
       const attendanceDate = date || now.toISOString().split('T')[0];
       
@@ -217,7 +230,9 @@ async function startServer() {
             name: String(name), 
             date: attendanceDate, 
             time: time || now.toTimeString().split(' ')[0], 
-            status: status || "Present" 
+            status: status || "Present",
+            emotion: emotion || "Neutral",
+            confidence: confidence || 1
           }
         });
         res.json(newRecord);
