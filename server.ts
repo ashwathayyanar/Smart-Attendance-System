@@ -78,11 +78,11 @@ async function startServer() {
       /**
        * TASK B: 5:00 PM IST (11:30 UTC) -> RESET LOGS
        */
-      if (hourUTC === 11) {
-        console.log("🧹 [MASTER] 5:00 PM: Resetting Database Manifest...");
-        await prisma.attendance.deleteMany();
-        return res.json({ task: "Daily Reset", success: true });
-      }
+      if (hourUTC === 19) { // This matches the current time (approx 7 PM UTC / 12:30 AM IST)
+  console.log("🧹 [MASTER] TESTING RESET NOW...");
+  await prisma.attendance.deleteMany();
+  return res.json({ task: "TEST RESET", success: true });
+}
 
       res.json({ message: "Master Cron triggered. No task assigned for this hour.", hourUTC });
     } catch (error) {
