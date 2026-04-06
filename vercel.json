@@ -15,8 +15,8 @@
   ],
   "crons": [
     {
-      "path": "/api/automation/daily-check",
-      "schedule": "30 4 * * 1-5"
+      "path": "/api/automation/master-cron",
+      "schedule": "30 4,11 * * 1-5"
     }
   ],
   "rewrites": [

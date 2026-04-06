@@ -35,126 +35,82 @@ async function startServer() {
   // --- 2. API ROUTES ---
 
   /**
+   * MASTER AUTOMATION CRON
+   * Triggers both 10AM Alerts and 5PM Resets via a single Vercel Cron entry.
+   */
+  app.get('/api/automation/master-cron', async (req, res) => {
+    const now = new Date();
+    const dayOfWeek = now.getDay();
+    const hourUTC = now.getUTCHours(); // Vercel is UTC
+    
+    // Weekend Protection
+    if (dayOfWeek === 0 || dayOfWeek === 6) {
+      return res.json({ message: "Weekend skip: System idle." });
+    }
+
+    try {
+      /**
+       * TASK A: 10:00 AM IST (04:30 UTC) -> SMS ALERTS
+       */
+      if (hourUTC === 4) {
+        console.log("🚀 [MASTER] 10:00 AM: Dispatching Absentee Alerts...");
+        const today = now.toISOString().split('T')[0];
+        
+        const [allStudents, presentToday] = await Promise.all([
+          prisma.student.findMany(),
+          prisma.attendance.findMany({ where: { date: today, status: 'Present' } })
+        ]);
+
+        const presentIds = presentToday.map(p => p.studentId);
+        const absentees = allStudents.filter(s => !presentIds.includes(s.studentId));
+
+        for (const student of absentees) {
+          const phone = (student.mobile || "").replace(/\D/g, '').slice(-10);
+          if (phone.length === 10) {
+            const message = `Attendance Alert: Dear Parents, Student ${student.fullName} (ID: ${student.studentId}) was recorded ABSENT today.`;
+            const smsUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${process.env.SMS_API_KEY}&route=q&message=${encodeURIComponent(message)}&numbers=${phone}`;
+            await fetch(smsUrl);
+          }
+        }
+        return res.json({ task: "SMS Alerts", notified: absentees.length });
+      }
+
+      /**
+       * TASK B: 5:00 PM IST (11:30 UTC) -> RESET LOGS
+       */
+      if (hourUTC === 11) {
+        console.log("🧹 [MASTER] 5:00 PM: Resetting Database Manifest...");
+        await prisma.attendance.deleteMany();
+        return res.json({ task: "Daily Reset", success: true });
+      }
+
+      res.json({ message: "Master Cron triggered. No task assigned for this hour.", hourUTC });
+    } catch (error) {
+      console.error("Master Cron Error:", error);
+      res.status(500).json({ error: "Automation engine failure" });
+    }
+  });
+
+  /**
    * MANUAL SMS ALERT ROUTE
-   * Switched back to 'route=q' for standard text messaging
    */
   app.post('/api/manual-sms', async (req, res) => {
     const { studentId } = req.body;
-    console.log(`[SMS] Attempting alert for ID: ${studentId}`);
-    
     try {
-      // Find the student in the database
-      const student = await prisma.student.findFirst({
-        where: {
-          studentId: String(studentId)
-        }
-      });
+      const student = await prisma.student.findFirst({ where: { studentId: String(studentId) } });
+      if (!student) return res.status(404).json({ error: 'Identity not found' });
 
-      if (!student) {
-        console.error(`[SMS] Blocked: ID ${studentId} not found.`);
-        return res.status(404).json({ error: 'Student not registered' });
-      }
-
-      // Safety: Format for Fast2SMS (10 digits)
-      const rawMobile = student.mobile || "";
-      const phone = rawMobile.replace(/\D/g, '').slice(-10);
-
-      if (phone.length !== 10) {
-        return res.status(400).json({ error: 'Invalid mobile number' });
-      }
-
-      // Quick SMS (route=q) allows full descriptive messages
-      const message = `Attendance Alert :Dear Parents Student ${student.fullName} (ID: ${student.studentId}) was recorded ABSENT today.`;
-      
-      const smsUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${process.env.SMS_API_KEY}&route=q&message=${encodeURIComponent(message)}&numbers=${phone}`;      
-      
-      console.log(`[SMS] Dispatching Quick SMS to: ${phone}`);
+      const phone = (student.mobile || "").replace(/\D/g, '').slice(-10);
+      const message = `Attendance Alert: Dear Parents, Student ${student.fullName} (ID: ${student.studentId}) was recorded ABSENT today.`;
+      const smsUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${process.env.SMS_API_KEY}&route=q&message=${encodeURIComponent(message)}&numbers=${phone}`;
 
       const smsResponse = await fetch(smsUrl);
       const smsResult = await smsResponse.json();
 
-      if (smsResult.return === true) {
-        console.log(`✅ [SMS] Success: Request accepted for ${student.fullName}`);
-        res.json({ success: true, message: 'Alert dispatched' });
-      } else {
-        console.error("[SMS] Gateway Refused:", smsResult);
-        res.status(500).json({ error: 'Gateway failed', details: smsResult.message || 'Check balance/route' });
-      }
-    } catch (error: any) {
-      console.error("--- CRITICAL SMS ROUTE ERROR ---");
-      console.error(error.message);
+      if (smsResult.return === true) res.json({ success: true });
+      else res.status(500).json({ error: 'Gateway failed', details: smsResult.message });
+    } catch (error) {
       res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  /**
-   * AUTOMATION: DAILY 10:00 AM SWEEP
-   * Triggers automated SMS for absentees (Mon-Fri)
-   */
-  app.get('/api/automation/daily-check', async (req, res) => {
-    const now = new Date();
-    const dayOfWeek = now.getDay(); // 0 is Sunday, 6 is Saturday
-
-    if (dayOfWeek === 0 || dayOfWeek === 6) {
-      console.log("🛑 Weekend detected. Automation standby.");
-      return res.json({ message: "System idle: Weekends excluded." });
-    }
-
-    console.log("🚀 Weekday detected. Starting 10:00 AM Absentee Sweep...");
-
-    try {
-      const today = now.toISOString().split('T')[0];
-
-      // 1. Fetch All Students and Daily Attendance
-      const [allStudents, presentToday] = await Promise.all([
-        prisma.student.findMany(),
-        prisma.attendance.findMany({ where: { date: today, status: 'Present' } })
-      ]);
-
-      const presentIds = presentToday.map(p => p.studentId);
-      const absentees = allStudents.filter(s => !presentIds.includes(s.studentId));
-
-      // 2. Dispatch Alerts
-      for (const student of absentees) {
-        const phone = (student.mobile || "").replace(/\D/g, '').slice(-10);
-        
-        if (phone.length === 10) {
-          const message = `ATTENDANCE ALERT: Dear Parents ${student.fullName} (ID:${student.studentId}) is recorded ABSENT today.`;
-          const smsUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${process.env.SMS_API_KEY}&route=q&message=${encodeURIComponent(message)}&numbers=${phone}`;
-          await fetch(smsUrl);
-          console.log(`✅ Automated alert sent: ${student.fullName}`);
-        }
-      }
-
-      res.json({ 
-        status: "Success", 
-        absenteesNotified: absentees.length,
-        timestamp: now.toLocaleString() 
-      });
-
-    } catch (error) {
-      console.error("Critical Automation Error:", error);
-      res.status(500).json({ error: "System failure during daily sweep." });
-    }
-  });
-
-  /**
-   * AUTOMATION: DAILY 5:00 PM RESET
-   * Clears attendance logs to prepare for the next morning (Mon-Fri)
-   */
-  app.get('/api/automation/reset-logs', async (req, res) => {
-    const dayOfWeek = new Date().getDay();
-
-    if (dayOfWeek === 0 || dayOfWeek === 6) {
-      return res.json({ message: "Weekend skip: Reset not required." });
-    }
-
-    try {
-      await prisma.attendance.deleteMany();
-      console.log("🧹 5:00 PM Reset: Attendance manifest cleared.");
-      res.json({ success: true, message: "Database reset for next day cycle." });
-    } catch (error) {
-      res.status(500).json({ error: "Cleanup failure" });
     }
   });
 
@@ -166,14 +122,9 @@ async function startServer() {
         let numericDescriptors: number[] = []; 
         try {
           const parsed = JSON.parse(student.faceData);
-          if (Array.isArray(parsed)) {
-            numericDescriptors = parsed.map(Number);
-          } else if (parsed && parsed.descriptors) {
-            numericDescriptors = Array.from(parsed.descriptors[0]).map(Number);
-          }
-        } catch (e) {
-          console.error("Parse error for:", student.studentId);
-        }
+          if (Array.isArray(parsed)) numericDescriptors = parsed.map(Number);
+          else if (parsed && parsed.descriptors) numericDescriptors = Array.from(parsed.descriptors[0]).map(Number);
+        } catch (e) {}
         return {
           ...student,
           id: student.studentId,
@@ -211,7 +162,7 @@ async function startServer() {
 
   /**
    * SMART GET: ENRICHED ATTENDANCE
-   * Now attaches Class and Section to every log record
+   * Fixes missing Class/Section in UI
    */
   app.get('/api/attendance', async (req, res) => {
     try {
@@ -228,10 +179,9 @@ async function startServer() {
           section: studentData?.section || "-"
         };
       });
-
       res.json(enrichedRecords);
     } catch (error) {
-      res.status(500).json({ error: 'Failed to read attendance' });
+      res.status(500).json({ error: 'Failed to read logs' });
     }
   });
 
