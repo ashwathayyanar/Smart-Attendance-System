@@ -38,18 +38,21 @@ export default function AttendanceLogs() {
   }, []);
 
   const handleClearLogs = async () => {
-    if (window.confirm('CRITICAL: Are you sure you want to wipe all attendance logs? This action is permanent.')) {
-      try {
-        const res = await fetch('/api/attendance', { method: 'DELETE' });
-        if (res.ok) {
-          setLogs([]);
-          alert('Database cleared successfully.');
-        }
-      } catch (error) {
-        alert('Failed to clear database logs.');
+  if (window.confirm('CRITICAL: Are you sure? This is permanent.')) {
+    try {
+      const res = await fetch('/api/attendance', { method: 'DELETE' });
+      if (res.ok) {
+        // 1. Clear local state immediately
+        setLogs([]); 
+        // 2. Optional: Force a re-fetch to be 100% sure
+        await fetchLogs(); 
+        alert('Database wiped and UI synced.');
       }
+    } catch (error) {
+      alert('Failed to clear logs.');
     }
-  };
+  }
+};
 
   const filteredLogs = logs.filter(log => 
     log.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
