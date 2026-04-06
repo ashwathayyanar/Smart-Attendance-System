@@ -35,60 +35,105 @@ async function startServer() {
   // --- 2. API ROUTES ---
 
   /**
-   * DAILY MAINTENANCE CRON (10:00 AM IST)
-   * 1. Clears old logs (Lazy-Deletion)
-   * 2. Sends DLT-compliant Automated SMS
-   */
-  app.get('/api/automation/daily-maintenance', async (req, res) => {
-    const now = new Date();
-    const today = now.toISOString().split('T')[0];
-    const dayOfWeek = now.getDay();
 
-    if (dayOfWeek === 0 || dayOfWeek === 6) return res.json({ message: "Weekend skip" });
+ * DAILY MAINTENANCE CRON (10:00 AM IST)
 
-    try {
-      console.log("🧹 Step 1: Purging stale logs from previous days...");
-      const deleted = await prisma.attendance.deleteMany({
-        where: { date: { not: today } }
-      });
+ * Optimized for Vercel Hobby Tier.
 
-      console.log("🚀 Step 2: Running 10:00 AM DLT-Absentee Sweep...");
-      const [allStudents, presentToday] = await Promise.all([
-        prisma.student.findMany(),
-        prisma.attendance.findMany({ where: { date: today, status: 'Present' } })
-      ]);
+ */
 
-      const presentIds = presentToday.map(p => p.studentId);
-      const absentees = allStudents.filter(s => !presentIds.includes(s.studentId));
+app.get('/api/automation/daily-maintenance', async (req, res) => {
 
-      // --- DLT CONFIGURATION ---
-      const senderId = "MNGNGA"; // YOUR REGISTERED SENDER ID
-      const templateId = "YOUR_DLT_TEMPLATE_ID"; // YOUR APPROVED TEMPLATE ID
+  const now = new Date();
 
-      for (const student of absentees) {
-        const phone = (student.mobile || "").replace(/\D/g, '').slice(-10);
-        if (phone.length === 10) {
-          // Format: {#var#}|{#var#} matching your DLT template variables
-          const variables = `${student.fullName}|${student.studentId}`;
-          const smsUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${process.env.SMS_API_KEY}&route=dlt&sender_id=${senderId}&message=${templateId}&variables_values=${encodeURIComponent(variables)}&numbers=${phone}`;
-          await fetch(smsUrl);
-        }
+  const today = now.toISOString().split('T')[0];
+
+  const dayOfWeek = now.getDay();
+
+
+
+  if (dayOfWeek === 0 || dayOfWeek === 6) return res.json({ message: "Weekend skip" });
+
+
+
+  try {
+
+    console.log("🧹 Step 1: Purging stale logs from previous days...");
+
+    // This clears out yesterday's data before we check today's absentees
+
+    const deleted = await prisma.attendance.deleteMany({
+
+      where: {
+
+        date: { not: today }
+
       }
 
-      res.json({ 
-        success: true, 
-        oldLogsCleared: deleted.count,
-        dltSmsSent: absentees.length 
-      });
+    });
 
-    } catch (error) {
-      console.error("Maintenance Error:", error);
-      res.status(500).json({ error: "System maintenance failed" });
+
+
+    console.log("🚀 Step 2: Running 10:00 AM Absentee Sweep...");
+
+    const [allStudents, presentToday] = await Promise.all([
+
+      prisma.student.findMany(),
+
+      prisma.attendance.findMany({ where: { date: today, status: 'Present' } })
+
+    ]);
+
+
+
+    const presentIds = presentToday.map(p => p.studentId);
+
+    const absentees = allStudents.filter(s => !presentIds.includes(s.studentId));
+
+
+
+    for (const student of absentees) {
+
+      const phone = (student.mobile || "").replace(/\D/g, '').slice(-10);
+
+      if (phone.length === 10) {
+
+        const message = `Attendance Alert: Dear Parents, Student ${student.fullName} (ID: ${student.studentId}) was recorded ABSENT today.`;
+
+        const smsUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${process.env.SMS_API_KEY}&route=q&message=${encodeURIComponent(message)}&numbers=${phone}`;
+
+        await fetch(smsUrl);
+
+      }
+
     }
-  });
+
+
+
+    res.json({ 
+
+      success: true, 
+
+      oldLogsCleared: deleted.count,
+
+      smsDispatched: absentees.length 
+
+    });
+
+
+
+  } catch (error) {
+
+    console.error("Maintenance Error:", error);
+
+    res.status(500).json({ error: "System maintenance failed" });
+
+  }
+
+});
 
   /**
-   * MANUAL SMS ALERT ROUTE (DLT VERSION)
+   * MANUAL SMS ALERT ROUTE
    */
   app.post('/api/manual-sms', async (req, res) => {
     const { studentId } = req.body;
@@ -97,19 +142,14 @@ async function startServer() {
       if (!student) return res.status(404).json({ error: 'Identity not found' });
 
       const phone = (student.mobile || "").replace(/\D/g, '').slice(-10);
-      
-      // --- DLT CONFIGURATION ---
-      const senderId = "MNGNGA"; 
-      const templateId = "YOUR_DLT_TEMPLATE_ID"; 
-      const variables = `${student.fullName}|${student.studentId}`;
-
-      const smsUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${process.env.SMS_API_KEY}&route=dlt&sender_id=${senderId}&message=${templateId}&variables_values=${encodeURIComponent(variables)}&numbers=${phone}`;
+      const message = `Attendance Alert: Dear Parents, Student ${student.fullName} (ID: ${student.studentId}) was recorded ABSENT today.`;
+      const smsUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${process.env.SMS_API_KEY}&route=q&message=${encodeURIComponent(message)}&numbers=${phone}`;
 
       const smsResponse = await fetch(smsUrl);
       const smsResult = await smsResponse.json();
 
       if (smsResult.return === true) res.json({ success: true });
-      else res.status(500).json({ error: 'DLT Route failed', details: smsResult.message });
+      else res.status(500).json({ error: 'Gateway failed', details: smsResult.message });
     } catch (error) {
       res.status(500).json({ error: 'Internal server error' });
     }
@@ -161,7 +201,10 @@ async function startServer() {
     }
   });
 
-  // GET attendance (with Student Data Join)
+  /**
+   * SMART GET: ENRICHED ATTENDANCE
+   * Fixes missing Class/Section in UI
+   */
   app.get('/api/attendance', async (req, res) => {
     try {
       const [records, students] = await Promise.all([
@@ -249,7 +292,7 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Smart System Online (DLT-Ready) on port ${PORT}`);
+    console.log(`🚀 Smart System Online on port ${PORT}`);
   });
 }
 
