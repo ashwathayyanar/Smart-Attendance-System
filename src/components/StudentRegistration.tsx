@@ -213,7 +213,7 @@ export default function StudentRegistration({ onRegisterSuccess }: StudentRegist
 
             <RegistrationInput 
               icon={Phone} 
-              label="Contact Mobile" 
+              label="Parents Contact Mobile" 
               type="tel"
               placeholder="+91 00000 00000"
               value={formData.mobile}
