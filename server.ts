@@ -35,28 +35,26 @@ async function startServer() {
   // --- 2. API ROUTES ---
 
  /**
- * DAILY MAINTENANCE CRON (Runs once at 10:00 AM IST)
- * 1. Clears old logs from previous days.
- * 2. Dispatches SMS for today's absentees.
+ * DAILY MAINTENANCE CRON (10:00 AM IST)
+ * Optimized for Vercel Hobby Tier.
  */
 app.get('/api/automation/daily-maintenance', async (req, res) => {
   const now = new Date();
   const today = now.toISOString().split('T')[0];
   const dayOfWeek = now.getDay();
 
-  // Weekend Protection
   if (dayOfWeek === 0 || dayOfWeek === 6) return res.json({ message: "Weekend skip" });
 
   try {
-    console.log("🧹 Step 1: Purging logs from previous days...");
-    // Delete any attendance record where the date is NOT today
+    console.log("🧹 Step 1: Purging stale logs from previous days...");
+    // This clears out yesterday's data before we check today's absentees
     const deleted = await prisma.attendance.deleteMany({
       where: {
         date: { not: today }
       }
     });
 
-    console.log(`🚀 Step 2: Processing 10 AM Absentee Sweep for ${today}...`);
+    console.log("🚀 Step 2: Running 10:00 AM Absentee Sweep...");
     const [allStudents, presentToday] = await Promise.all([
       prisma.student.findMany(),
       prisma.attendance.findMany({ where: { date: today, status: 'Present' } })
@@ -76,13 +74,13 @@ app.get('/api/automation/daily-maintenance', async (req, res) => {
 
     res.json({ 
       success: true, 
-      oldLogsPurged: deleted.count,
-      smsSent: absentees.length 
+      oldLogsCleared: deleted.count,
+      smsDispatched: absentees.length 
     });
 
   } catch (error) {
     console.error("Maintenance Error:", error);
-    res.status(500).json({ error: "Daily maintenance failed" });
+    res.status(500).json({ error: "System maintenance failed" });
   }
 });
 
