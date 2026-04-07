@@ -10,7 +10,6 @@ const __dirname = path.dirname(__filename);
 
 // --- 1. SMART DATABASE INITIALIZATION ---
 let dbUrl = process.env.DATABASE_URL || "";
-
 if (dbUrl && !dbUrl.includes('sslmode=')) {
   const separator = dbUrl.includes('?') ? '&' : '?';
   dbUrl += `${separator}sslmode=verify-full`;
@@ -20,10 +19,16 @@ const pool = new pg.Pool({ connectionString: dbUrl });
 const adapter = new PrismaPg(pool as any); 
 const prisma = new PrismaClient({ adapter });
 
+/**
+ * THE SOLUTION: IST HELPERS
+ * Ensures the date is identical at 8 AM and 10 AM.
+ */
+const getISTDate = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+const getISTTime = () => new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Kolkata', hour12: false });
+
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
-
   app.use(express.json({ limit: '50mb' }));
 
   // Request Logger
@@ -36,22 +41,22 @@ async function startServer() {
 
   /**
    * DAILY MAINTENANCE CRON (10:00 AM IST)
-   * Timezone-Aware: Logic forced to Asia/Kolkata
+   * FIXED: Uses 'lt' (Less Than) to avoid deleting early morning arrivals.
    */
   app.get('/api/automation/daily-maintenance', async (req, res) => {
-    // FORCE IST DATE (YYYY-MM-DD)
-    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-    const dayOfWeek = new Date().getDay(); // Local day check
+    const today = getISTDate();
+    const dayOfWeek = new Date().getDay(); 
 
     if (dayOfWeek === 0 || dayOfWeek === 6) return res.json({ message: "Weekend skip" });
 
     try {
-      console.log(`🧹 Step 1: Purging logs that are NOT ${today}...`);
+      console.log(`🧹 Step 1: Purging logs strictly OLDER than ${today}...`);
       
-      // Atomic Cleanup: Deletes everything from "yesterday"
+      // FIX: Using 'lt' ensures we only kill yesterday's data. 
+      // Today's early arrivals (8 AM - 10 AM) remain safe!
       const deleted = await prisma.attendance.deleteMany({
         where: {
-          date: { not: today }
+          date: { lt: today } 
         }
       });
 
@@ -114,23 +119,12 @@ async function startServer() {
   app.get('/api/students', async (req, res) => {
     try {
       const students = await prisma.student.findMany();
-      const frontendReadyStudents = students.map(student => {
-        let numericDescriptors: number[] = []; 
-        try {
-          const parsed = JSON.parse(student.faceData);
-          if (Array.isArray(parsed)) numericDescriptors = parsed.map(Number);
-          else if (parsed && parsed.descriptors) numericDescriptors = Array.from(parsed.descriptors[0]).map(Number);
-        } catch (e) {}
-        return {
-          ...student,
-          id: student.studentId,
-          name: student.fullName,
-          descriptors: numericDescriptors.length > 0 ? [numericDescriptors] : [],
-          faceDescriptor: numericDescriptors,
-          faceData: numericDescriptors
-        };
-      });
-      res.json(frontendReadyStudents);
+      res.json(students.map(s => ({
+        ...s,
+        id: s.studentId,
+        name: s.fullName,
+        faceData: JSON.parse(s.faceData || '[]')
+      })));
     } catch (error) {
       res.status(500).json({ error: 'Failed to read students' });
     }
@@ -183,14 +177,12 @@ async function startServer() {
   // POST a new attendance record
   app.post('/api/attendance', async (req, res) => {
     try {
-      const { studentId, name, date, time, status, emotion, confidence } = req.body;
-      const now = new Date();
-      // Use IST for default date if not provided
-      const istDate = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-      const attendanceDate = date || istDate;
+      const { studentId, name, status, emotion } = req.body;
+      const todayIST = getISTDate();
+      const timeIST = getISTTime();
       
       const existingRecord = await prisma.attendance.findFirst({
-        where: { studentId: String(studentId), date: attendanceDate }
+        where: { studentId: String(studentId), date: todayIST }
       });
       
       if (!existingRecord) {
@@ -198,11 +190,10 @@ async function startServer() {
           data: { 
             studentId: String(studentId), 
             name: String(name), 
-            date: attendanceDate, 
-            time: time || now.toTimeString().split(' ')[0], 
+            date: todayIST, 
+            time: timeIST, 
             status: status || "Present",
-            emotion: emotion || "Neutral",
-            confidence: confidence || 1
+            emotion: emotion || "Neutral"
           }
         });
         res.json(newRecord);
@@ -248,7 +239,7 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Smart System Online (IST-Aware) on port ${PORT}`);
+    console.log(`🚀 Smart System Hardened on port ${PORT}`);
   });
 }
 
