@@ -176,34 +176,48 @@ async function startServer() {
 
   // POST a new attendance record
   app.post('/api/attendance', async (req, res) => {
-    try {
-      const { studentId, name, status, emotion } = req.body;
-      const todayIST = getISTDate();
-      const timeIST = getISTTime();
-      
-      const existingRecord = await prisma.attendance.findFirst({
-        where: { studentId: String(studentId), date: todayIST }
-      });
-      
-      if (!existingRecord) {
-        const newRecord = await prisma.attendance.create({
-          data: { 
-            studentId: String(studentId), 
-            name: String(name), 
-            date: todayIST, 
-            time: timeIST, 
-            status: status || "Present",
-            emotion: emotion || "Neutral"
-          }
-        });
-        res.json(newRecord);
-      } else {
-        res.json(existingRecord); 
+  try {
+    const { studentId, name, status, emotion } = req.body;
+    
+    // Use the IST Helper we built
+    const todayIST = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    const timeIST = new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Kolkata', hour12: false });
+
+    console.log(`[ATTENDANCE] Request for ${name} (${studentId}) on ${todayIST}`);
+
+    // 1. Check if they are already marked for TODAY specifically
+    const existingRecord = await prisma.attendance.findFirst({
+      where: { 
+        studentId: String(studentId), 
+        date: todayIST 
       }
-    } catch (error) {
-      res.status(500).json({ error: 'Failed to save attendance' });
+    });
+    
+    if (existingRecord) {
+      console.log(`[SKIP] ${name} already logged for today.`);
+      return res.status(200).json(existingRecord); // Return 200, not an error
     }
-  });
+
+    // 2. Create the new record
+    const newRecord = await prisma.attendance.create({
+      data: { 
+        studentId: String(studentId), 
+        name: String(name), 
+        date: todayIST, 
+        time: timeIST, 
+        status: status || "Present",
+        emotion: emotion || "Neutral"
+      }
+    });
+
+    console.log(`✅ Success: ${name} marked present at ${timeIST}`);
+    res.json(newRecord);
+
+  } catch (error: any) {
+    console.error("CRITICAL POST ERROR:", error.message);
+    res.status(500).json({ error: 'Database Write Failed', details: error.message });
+  }
+});
 
   // DELETE routes
   app.delete('/api/attendance', async (req, res) => {
