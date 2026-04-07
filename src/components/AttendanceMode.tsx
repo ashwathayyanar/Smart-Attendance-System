@@ -30,15 +30,37 @@ export default function AttendanceMode() {
         
         if (Array.isArray(data) && data.length > 0) {
           setStudents(data);
-          // Initializing matcher with a 0.55 threshold for better reliability
-          faceMatcherRef.current = new faceapi.FaceMatcher(
-            data.map(s => {
-              const descriptors = s.descriptors || (s as any).faceData;
-              const label = `${s.studentId || (s as any).id}:::${s.fullName || s.name}`;
-              return new faceapi.LabeledFaceDescriptors(label, descriptors.map((d: any) => new Float32Array(d)));
-            }),
-            0.55
-          );
+          
+          // --- THE CRITICAL FIX: DIMENSIONAL VALIDATION ---
+          const labeledDescriptors = data.map(s => {
+            const rawData = s.faceData || (s as any).descriptors;
+            const label = `${s.studentId || (s as any).id}:::${s.fullName || s.name}`;
+            
+            // Convert to flat array and ensure exactly 128 dimensions
+            let descriptorArray = Array.isArray(rawData) ? rawData : Object.values(rawData);
+            
+            // If nested (e.g., [[...]]), flatten it
+            if (Array.isArray(descriptorArray[0])) {
+                descriptorArray = descriptorArray[0];
+            }
+
+            const floatArray = new Float32Array(descriptorArray.map(Number));
+
+            // Verify length to prevent Euclidean distance crash
+            if (floatArray.length !== 128) {
+              console.warn(`⚠️ Warning: Identity ${label} has invalid dimensions (${floatArray.length}). Skipping.`);
+              return null;
+            }
+
+            return new faceapi.LabeledFaceDescriptors(label, [floatArray]);
+          }).filter(ld => ld !== null) as faceapi.LabeledFaceDescriptors[];
+
+          if (labeledDescriptors.length === 0) {
+            setStatus({ type: 'error', message: 'Database corruption detected.' });
+            return;
+          }
+
+          faceMatcherRef.current = new faceapi.FaceMatcher(labeledDescriptors, 0.55);
           setStatus({ type: 'idle', message: '' });
         } else {
           setStatus({ type: 'error', message: 'No registered identities found.' });
@@ -141,6 +163,7 @@ export default function AttendanceMode() {
       
       if (!detections || detections.length === 0) {
         setStatus({ type: 'error', message: 'No target detected.' });
+        setIsProcessing(false);
         return;
       }
 
@@ -149,12 +172,9 @@ export default function AttendanceMode() {
       for (const detection of detections) {
         const result = faceMatcherRef.current.findBestMatch(detection.descriptor);
         
-        // Threshold check (0.55 for higher accuracy in tough lighting)
         if (result.label !== 'unknown' && result.distance < 0.55) {
           if (!recognizedStudents.has(result.label)) {
             const [id, name] = result.label.split(':::');
-            
-            // Sync with Server (IST-aware backend)
             const success = await markAttendance(id, name, detection.expressions, result.label);
             if (success) markedCount++;
           }
@@ -167,6 +187,7 @@ export default function AttendanceMode() {
         setStatus({ type: 'error', message: 'No new identities verified.' });
       }
     } catch (err) {
+      console.error("CAPTURE ERROR:", err);
       setStatus({ type: 'error', message: 'System processing error.' });
     } finally {
       setIsProcessing(false);
@@ -175,20 +196,13 @@ export default function AttendanceMode() {
   };
 
   const markAttendance = async (studentId: string, name: string, expressions: faceapi.FaceExpressions, label: string) => {
-    const emotion = Object.entries(expressions).reduce((a, b) => a[1] > b[1] ? a : b)[0];
+    const emotion = Object.entries(expressions).reduce((a: [string, number], b: [string, number]) => a[1] > b[1] ? a : b)[0];
     
-    const record = {
-      studentId: String(studentId),
-      name: String(name),
-      status: 'Present',
-      emotion
-    };
-
     try {
       const response = await fetch('/api/attendance', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(record)
+        body: JSON.stringify({ studentId, name, emotion })
       });
 
       if (response.ok) {
@@ -205,7 +219,6 @@ export default function AttendanceMode() {
 
   return (
     <div className="max-w-7xl mx-auto space-y-8 pb-10">
-      
       <div className="flex flex-col md:flex-row items-center justify-between gap-6 bg-white dark:bg-zinc-900/50 p-8 rounded-[2.5rem] border border-zinc-200 dark:border-zinc-800 shadow-xl backdrop-blur-xl">
         <div className="flex items-center gap-5">
            <div className="w-16 h-16 rounded-3xl bg-emerald-500/10 flex items-center justify-center text-emerald-500">
@@ -253,7 +266,6 @@ export default function AttendanceMode() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 relative aspect-video bg-black rounded-[3.5rem] overflow-hidden border-8 border-zinc-900 shadow-2xl group">
-          
           <div className="absolute top-8 left-8 w-12 h-12 border-t-4 border-l-4 border-emerald-500/50 rounded-tl-xl z-20"></div>
           <div className="absolute top-8 right-8 w-12 h-12 border-t-4 border-r-4 border-emerald-500/50 rounded-tr-xl z-20"></div>
           <div className="absolute bottom-8 left-8 w-12 h-12 border-b-4 border-l-4 border-emerald-500/50 rounded-bl-xl z-20"></div>
@@ -313,7 +325,8 @@ export default function AttendanceMode() {
             
             <div className="space-y-4 flex-1 overflow-y-auto pr-2 custom-scrollbar">
               {[...recognizedStudents].reverse().map((label: string) => {
-                const [id, name] = label.split(':::');
+                const [, name] = label.split(':::');
+                const [id] = label.split(':::');
                 return (
                   <motion.div 
                     initial={{ opacity: 0, x: 20 }}
@@ -339,14 +352,6 @@ export default function AttendanceMode() {
                 </div>
               )}
             </div>
-          </div>
-
-          <div className="bg-gradient-to-br from-emerald-500 to-teal-600 p-8 rounded-[2.5rem] text-white shadow-2xl shadow-emerald-500/20 relative overflow-hidden group">
-            <Zap className="absolute -right-4 -bottom-4 w-32 h-32 opacity-10 group-hover:scale-110 transition-transform duration-700" />
-            <h4 className="font-black text-lg mb-2 uppercase tracking-tighter italic">Optimization Protocol</h4>
-            <p className="text-xs font-bold opacity-80 leading-relaxed uppercase tracking-wider">
-              Ensure optimal lux levels and direct ocular alignment for sub-second verification latency.
-            </p>
           </div>
         </div>
       </div>
